@@ -3,7 +3,7 @@ set -euo pipefail
 
 SANDBOX="${1:-${NEMOCLAW_SANDBOX_NAME:-ov-blender-hermes}}"
 OV_REPO="${2:-${OV_REPO:-$HOME/work/ov-blender-example-internal}}"
-OV_SKILLS_REF="${OV_SKILLS_REF:-pr8-public-skills}"
+OV_SKILLS_REF="${OV_SKILLS_REF:-current}"
 
 usage() {
   cat <<'USAGE'
@@ -13,7 +13,7 @@ Usage:
   install_public_skills.sh [sandbox-name] [ov-blender-example-checkout]
 
 Environment:
-  OV_SKILLS_REF=current          Use the checkout as-is instead of PR 8
+  OV_SKILLS_REF=<ref>            Optional git ref to read skills from
   NEMOCLAW_SANDBOX_NAME         Default sandbox name
   OV_REPO                       Default ov-blender-example checkout
 USAGE
@@ -35,12 +35,10 @@ if [ ! -d "$OV_REPO/.git" ]; then
 fi
 
 cd "$OV_REPO"
-if [ "$OV_SKILLS_REF" != "current" ] && ! git cat-file -e "refs/heads/$OV_SKILLS_REF^{commit}" 2>/dev/null; then
-  git fetch origin pull/8/head:pr8-public-skills
-fi
 
 if [ "$OV_SKILLS_REF" != "current" ]; then
-  git checkout "$OV_SKILLS_REF" -- public/skills public/AGENTS.md
+  git fetch origin "$OV_SKILLS_REF"
+  git checkout FETCH_HEAD -- public/skills public/AGENTS.md
 elif [ ! -f public/skills/manifest.json ]; then
   echo "public/skills/manifest.json not found and OV_SKILLS_REF=current was set." >&2
   exit 1

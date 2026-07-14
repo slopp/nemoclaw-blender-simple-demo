@@ -2,7 +2,7 @@
 
 This repo is a simplified setup guide for a NemoClaw Hermes agent controlling a
 visible Blender desktop session with the public `ov-blender-example` add-on,
-OVRTX rendering, OVPhysX validation, and the PR 8 public Blender/OV skills.
+OVRTX rendering, OVPhysX validation, and the public Blender/OV skills.
 
 The target outcome is:
 
@@ -17,17 +17,11 @@ The target outcome is:
 ## Known Workarounds
 
 - Official Blender 5.1 Linux downloads are x64. Linux ARM64 uses a community
-  Blender 5.1.0 build unless an official or NVIDIA-provided ARM64 build is
-  available.
-- Linux ARM64 OVRTX/OVPhysX add-on/runtime artifacts are not treated here as a
-  released public artifact. Use a complete GitHub Actions artifact set and patch
-  the extension ZIP if Blender reports `linux-arm64` is unsupported.
-- Some ARM64 add-on artifacts predate the `Install Runtime From` UI field. Use
-  `scripts/materialize_runtime_from_artifacts.py` to install the runtime from a
-  local artifact directory.
-- `nemohermes mcp add` is for authenticated HTTPS MCP servers. A local Blender
-  MCP proxy is a private host service, so this guide uses a custom OpenShell
-  policy preset plus a manual Hermes `mcp_servers` entry.
+  Blender 5.1.0 build in this simplified path. A native Blender 5.1.2 source
+  build is the stronger DGX ARM64 option, but is intentionally outside this
+  minimal reproduce guide.
+- OVRTX/OVPhysX Linux release artifacts are published as GitHub prerelease
+  tags: `linux-x64-dev` and `linux-aarch64-dev`.
 
 ## Start Here
 
@@ -58,13 +52,12 @@ git clone "$OV_SOURCE_REPO_URL" "$OV_REPO"
 cd "$OV_REPO"
 git fetch origin main
 git checkout main
-git fetch origin pull/8/head:pr8-public-skills
 ```
 
-The add-on and runtime live under `public/`. PR 8 contributes the public agent
-skills used later by Hermes. If the public source repo is split from the
-internal repo, set `OV_SOURCE_REPO_URL` and `OV_GITHUB_REPO` before starting and
-keep the same `public/` layout.
+The add-on, runtime helpers, and public agent skills live under `public/` on
+`main`. If the public source repo is split from the internal repo, set
+`OV_SOURCE_REPO_URL` and `OV_GITHUB_REPO` before starting and keep the same
+`public/` layout.
 
 ## A. Host Software Install
 
@@ -104,6 +97,17 @@ blender --version
 
 Run only the command for your architecture.
 
+On DGX-style Linux ARM64 hosts, verify that Blender is native AArch64 before
+installing OVRTX. The helper accepts Blender 5.1.x, warns when it is not the
+native-source 5.1.2 reference build, and prints the GPU launch pin to use when
+GPU 0 is the RTX PRO device:
+
+```bash
+if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
+  "$GUIDE_REPO/scripts/verify_dgx_blender.sh" "$(command -v blender)"
+fi
+```
+
 Set up remote desktop access. If NoMachine is already installed, just verify it.
 
 ```bash
@@ -134,6 +138,13 @@ as the OS user, and start Blender from the desktop terminal:
 blender &
 ```
 
+On the validated DGX ARM64 station where GPU 0 is the RTX PRO device, launch
+Blender with the same GPU pin used by the OVRTX validator:
+
+```bash
+CUDA_VISIBLE_DEVICES=0 SRTX_ACTIVE_CUDA_GPUS=0 blender &
+```
+
 Download the Blender 2.81 splash scene.
 
 ```bash
@@ -142,50 +153,38 @@ curl -fL \
   -o "$DEMO_ROOT/scenes/thejunkshopsplashscreen.blend"
 ```
 
-Download OVRTX/OVPhysX artifacts.
-
-For a released x64 build, inspect releases and download the complete artifact
-set for the selected release:
+Download OVRTX/OVPhysX release artifacts. These are GitHub release assets, not
+workflow artifacts. If the repository still requires access for your account,
+keep the `gh auth login` session from the clone step.
 
 ```bash
-gh release list --repo "$OV_GITHUB_REPO" --limit 20
-gh release view linux-x64-dev --repo "$OV_GITHUB_REPO"
+case "$(uname -m)" in
+  x86_64|amd64)
+    export OV_RELEASE_TAG=linux-x64-dev
+    export OV_PLATFORM=linux-x64
+    ;;
+  aarch64|arm64)
+    export OV_RELEASE_TAG=linux-aarch64-dev
+    export OV_PLATFORM=linux-aarch64
+    ;;
+  *)
+    echo "Unsupported platform: $(uname -m)" >&2
+    exit 2
+    ;;
+esac
 
-gh release download linux-x64-dev \
+gh api "repos/$OV_GITHUB_REPO/releases/tags/$OV_RELEASE_TAG" \
+  --jq '{tag_name, prerelease, published_at, assets: [.assets[].name]}'
+gh release download "$OV_RELEASE_TAG" \
   --repo "$OV_GITHUB_REPO" \
-  --pattern 'ov-blender-example-linux-x64.zip' \
-  --pattern 'ovrtx-*-linux-x64.zip' \
-  --pattern 'ovphysx-*-linux-x64.zip' \
-  --pattern 'SHA256SUMS' \
+  --pattern "ov-blender-example-${OV_PLATFORM}.zip" \
+  --pattern "ovrtx-*-${OV_PLATFORM}.zip" \
+  --pattern "ovphysx-*-${OV_PLATFORM}.zip" \
   --dir "$OV_ARTIFACT_DIR"
 ```
 
-For Linux ARM64, use a complete non-released GitHub Actions artifact set. This
-requires a GitHub token/session that can read the workflow artifact.
-
 ```bash
-export OV_ACTION_RUN_ID=<run-id-with-linux-aarch64-artifacts>
-gh run download "$OV_ACTION_RUN_ID" \
-  --repo "$OV_GITHUB_REPO" \
-  --name development-artifact-set-linux-aarch64 \
-  --dir "$OV_ARTIFACT_DIR"
-```
-
-If Blender rejects the ARM64 extension ZIP with a platform error, patch only the
-extension manifest token:
-
-```bash
-python3 "$GUIDE_REPO/scripts/patch_arm64_extension_zip.py" \
-  "$OV_ARTIFACT_DIR/ov-blender-example-linux-aarch64.zip" \
-  "$OV_ARTIFACT_DIR/ov-blender-example-linux-arm64-local.zip"
-
-export OV_ADDON_ZIP="$OV_ARTIFACT_DIR/ov-blender-example-linux-arm64-local.zip"
-```
-
-For x64:
-
-```bash
-export OV_ADDON_ZIP="$OV_ARTIFACT_DIR/ov-blender-example-linux-x64.zip"
+export OV_ADDON_ZIP="$OV_ARTIFACT_DIR/ov-blender-example-${OV_PLATFORM}.zip"
 ```
 
 Install and enable the Blender extension from the command line:
@@ -213,6 +212,10 @@ python3 "$GUIDE_REPO/scripts/materialize_runtime_from_artifacts.py" \
   --artifact-dir "$OV_ARTIFACT_DIR" \
   --storage-root "$HOME/.config/blender/5.1/extensions/.user/user_default/ovrtx_blender_example"
 ```
+
+OVPhysX is included in the OVRTX runtime component graph. Do not install a
+separate unrelated OVPhysX build; validate the runtime-installed
+`ovphysx_grpc_server` through the demo's OVPhysX checks.
 
 Install Blender MCP on the host. This guide uses the public `blender-mcp`
 pattern: a Blender add-on listening on local TCP and an HTTP/SSE proxy that the
@@ -340,7 +343,8 @@ later `nemohermes` command:
 export NEMOCLAW_GATEWAY_PORT=18081
 ```
 
-Install the PR 8 public Blender/OV skills into Hermes:
+Install the public Blender/OV skills from the checked-out `main` branch into
+Hermes:
 
 ```bash
 cd "$GUIDE_REPO"
