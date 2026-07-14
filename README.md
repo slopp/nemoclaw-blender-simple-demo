@@ -37,8 +37,7 @@ Run these commands on the target machine.
 mkdir -p "$HOME/work"
 cd "$HOME/work"
 
-# Replace this URL after this standalone repo is pushed.
-git clone <this-standalone-repo-url> nemoclaw-blender-simple-demo
+git clone https://github.com/slopp/nemoclaw-blender-simple-demo.git nemoclaw-blender-simple-demo
 cd nemoclaw-blender-simple-demo
 
 export GUIDE_REPO="$PWD"
@@ -250,34 +249,33 @@ curl -fsS --max-time 3 http://127.0.0.1:9877/sse >/dev/null || true
 
 ## B. NemoClaw, OpenShell, Hermes, and Local Ultra
 
-Start a local vLLM server for Ultra. The official Hugging Face model id includes
-`A55B`; the served model name below preserves the shorter model id already used
-by the remote TME endpoint.
-
-The 550B NVFP4 Ultra model is large. Use all available local GPUs and expect the
-first model download/load to take time. If the host cannot fit or serve the
-model, use the remote endpoint fallback below and return to local vLLM later.
+Start a local OpenAI-compatible vLLM server. The remote TME Ultra endpoint can
+be unavailable, so this guide uses the NVIDIA Nemotron 3 Ultra DGX Station
+deployment path: `vllm/vllm-openai:v0.22.0` serving
+`nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4` as `nemotron-ultra`. The
+launcher also enables the Nemotron v3 reasoning parser and Qwen3 Coder tool
+parser required for agent use.
 
 ```bash
-python3 -m venv "$DEMO_ROOT/venvs/vllm"
-. "$DEMO_ROOT/venvs/vllm/bin/activate"
-pip install --upgrade pip
-pip install vllm huggingface_hub
+docker pull vllm/vllm-openai:v0.22.0
 
-# Required if the model is gated for your account.
-huggingface-cli login
+# Required if the Hugging Face model is gated for your account.
+hf auth login
 
-export ULTRA_MODEL_WEIGHTS="nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4"
-export ULTRA_SERVED_NAME="nvidia/NVIDIA-Nemotron-3-Ultra-550B-NVFP4"
-export TP_SIZE="$(nvidia-smi -L | wc -l | tr -d ' ')"
+# Pick the GB300. On the validated two-GPU station it is GPU 1; on a single-GPU
+# DGX Station, use `all`.
+nvidia-smi --query-gpu=index,name,memory.total --format=csv,noheader
+export VLLM_GPU_DEVICE=1
 
-vllm serve "$ULTRA_MODEL_WEIGHTS" \
-  --served-model-name "$ULTRA_SERVED_NAME" \
-  --host 0.0.0.0 \
-  --port 8000 \
-  --tensor-parallel-size "$TP_SIZE" \
-  --enable-auto-tool-choice \
-  --tool-call-parser hermes
+"$GUIDE_REPO/scripts/start_nemotron_ultra_vllm_station.sh"
+```
+
+Initial startup downloads about 328 GiB of checkpoint data, then loads weights,
+compiles, warms up kernels, and captures CUDA graphs. On the validated GB300
+station this took about 20 minutes the first time. Watch startup with:
+
+```bash
+docker logs -f nemotron-ultra-vllm
 ```
 
 Verify the OpenAI-compatible endpoint from another terminal:
@@ -286,16 +284,11 @@ Verify the OpenAI-compatible endpoint from another terminal:
 curl -fsS http://127.0.0.1:8000/v1/models | jq .
 ```
 
-If local Ultra is not ready yet, use the remote endpoint as the temporary
-provider:
+The script starts a container named `nemotron-ultra-vllm`. Inspect or stop it with:
 
 ```bash
-export ULTRA_BASE_URL="https://nemotron-ultra.apps.inference-tme.nvidia.com/v1"
-export ULTRA_MODEL="nvidia/NVIDIA-Nemotron-3-Ultra-550B-NVFP4"
-export ULTRA_API_KEY="none_needed"
-curl -fsS --max-time 10 \
-  -H "Authorization: Bearer $ULTRA_API_KEY" \
-  "$ULTRA_BASE_URL/models" | jq .
+docker logs -f nemotron-ultra-vllm
+docker rm -f nemotron-ultra-vllm
 ```
 
 Install NemoClaw for Hermes.
@@ -309,33 +302,53 @@ nemohermes --version
 openshell --version
 ```
 
-Onboard a Hermes sandbox against the running local vLLM server:
+If `nemohermes` is not found in a non-interactive SSH command, run the command
+from a login shell or export the same PATH first:
 
 ```bash
-export NEMOCLAW_PROVIDER=vllm
+export PATH="$HOME/.local/bin:$PATH"
+```
+
+Create the Hermes sandbox, then point it at the running local vLLM server:
+
+```bash
 export NEMOCLAW_SANDBOX_NAME="${NEMOCLAW_SANDBOX_NAME:-ov-blender-hermes}"
 export NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1
+export NEMOCLAW_VLLM_MODEL="${VLLM_SERVED_NAME:-nemotron-ultra}"
+export NEMOCLAW_VLLM_LOCAL_TOKEN="${NEMOCLAW_VLLM_LOCAL_TOKEN:-none_needed}"
 
 nemohermes onboard \
   --agent hermes \
   --name "$NEMOCLAW_SANDBOX_NAME" \
   --sandbox-gpu \
+  --no-ollama-autostart \
   --yes \
   --yes-i-accept-third-party-software
-```
 
-Or switch an existing Hermes sandbox to the remote Ultra endpoint:
+if openshell provider get vllm-local >/dev/null 2>&1; then
+  openshell provider update vllm-local \
+    --credential NEMOCLAW_VLLM_LOCAL_TOKEN \
+    --config OPENAI_BASE_URL=http://host.openshell.internal:8000/v1
+else
+  openshell provider create \
+    --name vllm-local \
+    --type openai \
+    --credential NEMOCLAW_VLLM_LOCAL_TOKEN \
+    --config OPENAI_BASE_URL=http://host.openshell.internal:8000/v1
+fi
 
-```bash
-export ULTRA_API_KEY="${ULTRA_API_KEY:-none_needed}"
 nemohermes inference set \
   --sandbox "$NEMOCLAW_SANDBOX_NAME" \
-  --provider compatible-endpoint \
-  --model "$ULTRA_MODEL" \
-  --endpoint-url "$ULTRA_BASE_URL" \
-  --credential-env ULTRA_API_KEY \
-  --inference-api openai-completions
+  --provider vllm-local \
+  --model "$NEMOCLAW_VLLM_MODEL"
+
+nemohermes "$NEMOCLAW_SANDBOX_NAME" rebuild --yes
+nemohermes "$NEMOCLAW_SANDBOX_NAME" status
 ```
+
+For an existing sandbox, rerun the provider and `nemohermes inference set`
+commands after the local vLLM endpoint is healthy, then rebuild the sandbox if
+Hermes reports that its config hash is frozen.
 
 Install the PR 8 public Blender/OV skills into Hermes:
 
@@ -372,8 +385,19 @@ nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 60 -- \
 timeout 90s nemohermes "$NEMOCLAW_SANDBOX_NAME" gateway restart || {
   echo "Gateway restart did not return within 90 seconds; check status and logs."
   nemohermes "$NEMOCLAW_SANDBOX_NAME" status
+  nemohermes "$NEMOCLAW_SANDBOX_NAME" recover
 }
 ```
+
+Validate the Hermes-native MCP entry from inside the sandbox:
+
+```bash
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- hermes mcp list
+```
+
+For this private host-side Blender MCP proxy, `nemohermes mcp list` may show no
+managed bridges. That command reports NemoClaw-managed HTTPS MCP bridge entries;
+the local Blender proxy is configured directly in Hermes `mcp_servers`.
 
 Open the Hermes dashboard:
 
@@ -394,6 +418,16 @@ scene if it is not already open:
 
 ```bash
 blender "$DEMO_ROOT/scenes/thejunkshopsplashscreen.blend" &
+```
+
+Set the visible scene to the OVRTX render engine. In Blender, use
+`Render Properties > Render Engine > OVRTX Example`. To verify or set it from
+the Python console:
+
+```python
+import bpy
+bpy.context.scene.render.engine = "OVRTX_EXAMPLE"
+print(bpy.context.scene.render.engine)
 ```
 
 In Hermes, first run the Blender control smoke test from
