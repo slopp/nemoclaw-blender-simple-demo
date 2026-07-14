@@ -314,41 +314,31 @@ Create the Hermes sandbox, then point it at the running local vLLM server:
 ```bash
 export NEMOCLAW_SANDBOX_NAME="${NEMOCLAW_SANDBOX_NAME:-ov-blender-hermes}"
 export NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1
-export NEMOCLAW_VLLM_MODEL="${VLLM_SERVED_NAME:-nemotron-ultra}"
 export NEMOCLAW_VLLM_LOCAL_TOKEN="${NEMOCLAW_VLLM_LOCAL_TOKEN:-none_needed}"
+export NEMOCLAW_PROVIDER=vllm
+unset NEMOCLAW_VLLM_MODEL
 
 nemohermes onboard \
+  --non-interactive \
   --agent hermes \
   --name "$NEMOCLAW_SANDBOX_NAME" \
   --sandbox-gpu \
   --no-ollama-autostart \
   --yes \
   --yes-i-accept-third-party-software
-
-if openshell provider get vllm-local >/dev/null 2>&1; then
-  openshell provider update vllm-local \
-    --credential NEMOCLAW_VLLM_LOCAL_TOKEN \
-    --config OPENAI_BASE_URL=http://host.openshell.internal:8000/v1
-else
-  openshell provider create \
-    --name vllm-local \
-    --type openai \
-    --credential NEMOCLAW_VLLM_LOCAL_TOKEN \
-    --config OPENAI_BASE_URL=http://host.openshell.internal:8000/v1
-fi
-
-nemohermes inference set \
-  --sandbox "$NEMOCLAW_SANDBOX_NAME" \
-  --provider vllm-local \
-  --model "$NEMOCLAW_VLLM_MODEL"
-
-nemohermes "$NEMOCLAW_SANDBOX_NAME" rebuild --yes
 nemohermes "$NEMOCLAW_SANDBOX_NAME" status
 ```
 
-For an existing sandbox, rerun the provider and `nemohermes inference set`
-commands after the local vLLM endpoint is healthy, then rebuild the sandbox if
-Hermes reports that its config hash is frozen.
+`NEMOCLAW_PROVIDER=vllm` selects the running local vLLM server in unattended
+mode. Do not set `NEMOCLAW_VLLM_MODEL` for this externally started vLLM server;
+that variable is reserved for NemoClaw's managed-vLLM install path. If you are
+validating this guide beside an existing NemoClaw sandbox on the same host, use
+a separate gateway before onboarding and keep that environment variable on every
+later `nemohermes` command:
+
+```bash
+export NEMOCLAW_GATEWAY_PORT=18081
+```
 
 Install the PR 8 public Blender/OV skills into Hermes:
 
@@ -370,34 +360,25 @@ nemohermes "$NEMOCLAW_SANDBOX_NAME" policy-add \
   --yes
 ```
 
-Add the local HTTP/SSE Blender MCP server to Hermes config. This is the local
-MCP workaround described above; do not use `nemohermes mcp add` for this private
-host endpoint.
+Register the local Blender MCP proxy with Hermes. Use the Streamable HTTP
+endpoint at `/mcp`, not the legacy SSE endpoint at `/sse`; Hermes probes the
+server with POST requests and `/sse` returns `405 Method Not Allowed`.
 
 ```bash
-nemohermes "$NEMOCLAW_SANDBOX_NAME" upload \
-  "$GUIDE_REPO/scripts/configure_hermes_blender_mcp.py" \
-  /tmp/
-
-nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 60 -- \
-  python3 /tmp/configure_hermes_blender_mcp.py "$HOST_IP"
-
-timeout 90s nemohermes "$NEMOCLAW_SANDBOX_NAME" gateway restart || {
-  echo "Gateway restart did not return within 90 seconds; check status and logs."
-  nemohermes "$NEMOCLAW_SANDBOX_NAME" status
-  nemohermes "$NEMOCLAW_SANDBOX_NAME" recover
-}
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 120 -- sh -lc \
+  "printf 'n\ny\n' | hermes mcp add blender --url http://$HOST_IP:9877/mcp"
 ```
+
+The first answer says the local server does not require authentication. The
+second answer enables all discovered Blender tools. Do not restart the gateway
+just for this MCP registration; start a new Hermes session/request after adding
+the server.
 
 Validate the Hermes-native MCP entry from inside the sandbox:
 
 ```bash
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- hermes mcp list
 ```
-
-For this private host-side Blender MCP proxy, `nemohermes mcp list` may show no
-managed bridges. That command reports NemoClaw-managed HTTPS MCP bridge entries;
-the local Blender proxy is configured directly in Hermes `mcp_servers`.
 
 Open the Hermes dashboard:
 
