@@ -16,10 +16,10 @@ The target outcome is:
 
 ## Known Workarounds
 
-- Official Blender 5.1 Linux downloads are x64. Linux ARM64 uses a community
-  Blender 5.1.0 build in this simplified path. A native Blender 5.1.2 source
-  build is the stronger DGX ARM64 option, but is intentionally outside this
-  minimal reproduce guide.
+- Official Blender 5.1 Linux downloads are x64. Linux ARM64 builds Blender
+  `v5.1.2` from source using `scripts/build_blender_5_1_2_arm64.sh` and the
+  DGX ARM64 patch in this repo. The community Blender 5.1.0 binary is
+  fallback-only.
 - OVRTX/OVPhysX Linux release artifacts are published as GitHub prerelease
   tags: `linux-x64-dev` and `linux-aarch64-dev`.
 
@@ -75,13 +75,36 @@ sudo usermod -aG docker "$USER"
 git lfs install
 ```
 
+On Linux ARM64, install the additional native Blender build dependencies before
+building Blender from source:
+
+```bash
+if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
+  sudo apt-get install -y \
+    build-essential cmake pkg-config ninja-build patchelf yasm autoconf automake \
+    libtool gettext gcc-14 g++-14 libnuma-dev libffi-dev libglib2.0-dev \
+    libcairo2-dev libasound2-dev libdbus-1-dev libdecor-0-dev libdrm-dev \
+    libevdev-dev libice-dev libinput-dev libpciaccess-dev libpixman-1-dev \
+    libpulse-dev libsm-dev libudev-dev libwayland-dev wayland-protocols \
+    libxcb-randr0-dev libxcb-render0-dev libxcursor-dev libxi-dev \
+    libxinerama-dev libxkbcommon-dev libxrandr-dev libxt-dev libxxf86vm-dev
+
+  command -v gcc-14
+  command -v g++-14
+fi
+```
+
+If `gcc-14` and `g++-14` are unavailable from the configured Ubuntu package
+repositories, use approved Ubuntu 24.04 ARM64 GCC 14 packages. Do not use x64
+packages on ARM64.
+
 If Docker group membership changed, open a new login shell or run:
 
 ```bash
 newgrp docker
 ```
 
-Install Blender 5.1.
+Install Blender 5.1. Run only the command for your architecture.
 
 ```bash
 cd "$GUIDE_REPO"
@@ -89,13 +112,47 @@ cd "$GUIDE_REPO"
 # Linux x64: official Blender build.
 ./scripts/install_blender_5_1.sh
 
-# Linux ARM64: community workaround used on the DGX-style host.
-BLENDER_ALLOW_COMMUNITY_ARM64=1 ./scripts/install_blender_5_1.sh
+# Linux ARM64: native Blender 5.1.2 source build.
+./scripts/build_blender_5_1_2_arm64.sh
 
 blender --version
 ```
 
-Run only the command for your architecture.
+The ARM64 build can take hours and needs roughly 100 GiB of free disk for
+source, dependencies, build trees, and install outputs. It uses:
+
+- Blender tag `v5.1.2`, commit `ec6e62d40fa9e9d1bea33ad5d00148c99a4f0832`
+- GCC/G++ 14
+- native Blender dependency bundle under `lib/linux_arm64`
+- embedded Python 3.13
+- the ARM64 DGX patch in
+  `patches/blender-5.1.2-arm64-dgx.patch`
+
+If a native source build is temporarily impossible and you only need a quick UI
+smoke test, the older community binary is still available as an explicit
+fallback:
+
+```bash
+BLENDER_ALLOW_COMMUNITY_ARM64=1 ./scripts/install_blender_5_1.sh
+```
+
+If the ARM64 dependency build fails in the OSL dependency because the host CUDA
+toolkit is newer than the pinned OSL OptiX bitcode support, disable OptiX only
+for that external OSL build and rerun the Blender source-build script:
+
+```bash
+export BLENDER_ARM64_WORK_ROOT="${BLENDER_ARM64_WORK_ROOT:-$HOME/work/blender-5.1.2-arm64}"
+export TOOLING_VENV="$BLENDER_ARM64_WORK_ROOT/tooling-venv"
+export BLENDER_DEPS_BUILD="$BLENDER_ARM64_WORK_ROOT/blender-deps-build"
+
+cmake -S "$BLENDER_DEPS_BUILD/build/osl/src/external_osl" \
+  -B "$BLENDER_DEPS_BUILD/build/osl/src/external_osl-build" \
+  -DOSL_USE_OPTIX=OFF
+cmake --build "$BLENDER_DEPS_BUILD" --target external_osl
+
+cd "$GUIDE_REPO"
+./scripts/build_blender_5_1_2_arm64.sh
+```
 
 On DGX-style Linux ARM64 hosts, verify that Blender is native AArch64 before
 installing OVRTX. The helper accepts Blender 5.1.x, warns when it is not the

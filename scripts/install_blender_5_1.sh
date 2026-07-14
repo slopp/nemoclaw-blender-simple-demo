@@ -16,11 +16,12 @@ Environment:
   BLENDER_PREFIX                  Default: /opt
   BLENDER_SYMLINK                 Default: /usr/local/bin/blender
   BLENDER_DOWNLOAD_DIR            Default: ~/Downloads
-  BLENDER_ALLOW_COMMUNITY_ARM64   Required on Linux aarch64/arm64
+  BLENDER_ALLOW_COMMUNITY_ARM64   Fallback-only on Linux aarch64/arm64
 
 Notes:
-  Official Blender Linux 5.1 binaries are x64. On Linux ARM64 this script uses
-  the community lfdevs Blender ARM64 build only when explicitly allowed.
+  Official Blender Linux 5.1 binaries are x64. The guide's primary Linux ARM64
+  path is scripts/build_blender_5_1_2_arm64.sh. This script uses the community
+  lfdevs Blender ARM64 build only when explicitly allowed for fallback testing.
 USAGE
 }
 
@@ -41,7 +42,8 @@ case "$ARCH" in
   aarch64|arm64)
     if [ "${BLENDER_ALLOW_COMMUNITY_ARM64:-}" != "1" ]; then
       echo "Linux ARM64 Blender 5.1 is not published by blender.org." >&2
-      echo "Re-run with BLENDER_ALLOW_COMMUNITY_ARM64=1 to use the community ARM64 build." >&2
+      echo "Use scripts/build_blender_5_1_2_arm64.sh for the native source build." >&2
+      echo "Re-run with BLENDER_ALLOW_COMMUNITY_ARM64=1 only for the fallback community ARM64 build." >&2
       exit 2
     fi
     VERSION="5.1.0"
@@ -88,4 +90,3 @@ sudo mv "$EXTRACTED" "$INSTALL_DIR"
 sudo ln -sfn "$INSTALL_DIR/blender" "$SYMLINK"
 
 "$SYMLINK" --version | head -n 3
-
