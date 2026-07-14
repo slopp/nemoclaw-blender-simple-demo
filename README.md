@@ -17,17 +17,19 @@ The target outcome is:
 ## Execution Model
 
 Most steps are intentionally scriptable so a human operator or an agent can run
-them over SSH. The required human desktop checkpoints are called out explicitly.
+them over SSH. Required human checkpoints are called out in bold.
 
 - **Scriptable:** run in a host shell or SSH session.
+- **Human checkpoint:** run from the logged-in NoMachine desktop or complete a
+  required credential/login step when called out in bold.
 - **Human desktop:** run from the logged-in NoMachine desktop when the visible
   Blender UI must exist.
 - **Hermes prompt:** send to Hermes after the sandbox and Blender MCP are
   configured.
 
-Keep one visible Blender process running for the demo. The scripted Blender MCP
-launch below starts Blender, opens the splash scene, and starts the MCP socket
-server in that same visible process.
+Keep one visible Blender process running for the demo. The only visible Blender
+launch is the bold human desktop checkpoint in section A; it opens the splash
+scene and starts the MCP socket server in that same process.
 
 ## Known Workarounds
 
@@ -60,9 +62,10 @@ export NEMOCLAW_SANDBOX_NAME="ov-blender-hermes"
 mkdir -p "$DEMO_ROOT" "$OV_ARTIFACT_DIR" "$DEMO_ROOT/out" "$DEMO_ROOT/scenes"
 ```
 
-Clone the OVRTX/OVPhysX Blender example repository. This is scriptable, but a
-human may need to complete `gh auth login` if GitHub access is not already
-configured.
+Clone the OVRTX/OVPhysX Blender example repository.
+
+**Human credential checkpoint: GitHub access.** If `gh auth status` fails,
+complete `gh auth login` in the terminal, then rerun the clone commands.
 
 ```bash
 gh auth status || gh auth login
@@ -183,8 +186,7 @@ if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
 fi
 ```
 
-Set up remote desktop access. This is scriptable until the final human login.
-If NoMachine is already installed, just verify it.
+Set up remote desktop access. If NoMachine is already installed, just verify it.
 
 ```bash
 sudo /usr/NX/bin/nxserver --status || true
@@ -207,10 +209,9 @@ sudo apt-get install -y "$HOME/Downloads"/nomachine_*_arm64.deb
 sudo /usr/NX/bin/nxserver --status
 ```
 
-Human desktop checkpoint: connect with the NoMachine client, choose the
-GDM/local physical desktop, and log in as the OS user. Do not start Blender yet;
-the later MCP launch command starts the one visible Blender process used for the
-demo.
+Do not start Blender from the desktop yet. The single human desktop checkpoint
+below connects through NoMachine and starts the one visible Blender process used
+for the demo.
 
 Download the Blender 2.81 splash scene.
 
@@ -254,7 +255,8 @@ gh release download "$OV_RELEASE_TAG" \
 export OV_ADDON_ZIP="$OV_ARTIFACT_DIR/ov-blender-example-${OV_PLATFORM}.zip"
 ```
 
-Install and enable the Blender extension from the command line:
+Install and enable the Blender extension headlessly from the command line. This
+does not start the visible desktop Blender session.
 
 ```bash
 blender --factory-startup --background \
@@ -271,10 +273,6 @@ python3 "$GUIDE_REPO/scripts/materialize_runtime_from_artifacts.py" \
   --artifact-dir "$OV_ARTIFACT_DIR" \
   --storage-root "$HOME/.config/blender/5.1/extensions/.user/user_default/ovrtx_blender_example"
 ```
-
-Optional human UI verification after Blender is visible: open
-`Edit > Preferences > Add-ons > ovrtx Blender Example` and confirm
-`Runtime: ready` and `Preflight: pass`.
 
 OVPhysX is included in the OVRTX runtime component graph. Do not install a
 separate unrelated OVPhysX build; validate the runtime-installed
@@ -309,32 +307,32 @@ echo $! > "$DEMO_ROOT/out/blender-mcp-proxy.pid"
 curl -fsS --max-time 3 http://127.0.0.1:9877/sse >/dev/null || true
 ```
 
-Human desktop checkpoint: start the visible Blender process and MCP socket
-server from a terminal inside the NoMachine desktop. This command opens the
-splash scene and starts Blender MCP on `127.0.0.1:9876`; leave this Blender
-window open.
+**Human desktop checkpoint: start the one visible Blender session.** Connect
+with the NoMachine client, choose the GDM/local physical desktop, log in as the
+OS user, open a terminal inside that desktop, then run this command. It opens
+the splash scene and starts Blender MCP on `127.0.0.1:9876`; leave this Blender
+window open for the rest of the guide.
 
 ```bash
-export BLENDER_MCP_ADDON="$DEMO_ROOT/blender-mcp/blender_mcp_addon.py"
-export BLENDER_MCP_HOST=127.0.0.1
-export BLENDER_MCP_PORT=9876
+gpu_env=()
+if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
+  # DGX ARM64 validation used GPU 0 as the RTX PRO render device.
+  gpu_env=(CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}" SRTX_ACTIVE_CUDA_GPUS="${SRTX_ACTIVE_CUDA_GPUS:-0}")
+fi
 
-# Use this on DGX ARM64 when GPU 0 is the RTX PRO render device.
-CUDA_VISIBLE_DEVICES=0 SRTX_ACTIVE_CUDA_GPUS=0 \
+env \
+  BLENDER_MCP_ADDON="$DEMO_ROOT/blender-mcp/blender_mcp_addon.py" \
+  BLENDER_MCP_HOST=127.0.0.1 \
+  BLENDER_MCP_PORT=9876 \
+  "${gpu_env[@]}" \
   blender "$DEMO_ROOT/scenes/thejunkshopsplashscreen.blend" \
   --python "$GUIDE_REPO/scripts/start_visible_blender_mcp.py" \
   > "$DEMO_ROOT/out/visible-blender-mcp.log" 2>&1 &
 ```
 
-On x64 or a host where GPU pinning is unnecessary, omit the two GPU environment
-variables:
-
-```bash
-BLENDER_MCP_ADDON="$DEMO_ROOT/blender-mcp/blender_mcp_addon.py" \
-  blender "$DEMO_ROOT/scenes/thejunkshopsplashscreen.blend" \
-  --python "$GUIDE_REPO/scripts/start_visible_blender_mcp.py" \
-  > "$DEMO_ROOT/out/visible-blender-mcp.log" 2>&1 &
-```
+Optional UI check inside the same desktop session: open
+`Edit > Preferences > Add-ons > ovrtx Blender Example` and confirm
+`Runtime: ready` and `Preflight: pass`.
 
 Scriptable verification from any host shell:
 
@@ -354,9 +352,13 @@ parser required for agent use.
 
 ```bash
 docker pull vllm/vllm-openai:v0.22.0
+```
 
-# Human credential checkpoint: required if the Hugging Face model is gated for
-# your account. Leave HF_TOKEN unset only when the model is already accessible.
+**Human credential checkpoint: Hugging Face access.** Set `HF_TOKEN` if the
+model is gated for your account. Leave it unset only when the model is already
+accessible.
+
+```bash
 export HF_TOKEN="hf_..."
 
 # Pick the GB300. On the validated two-GPU station it is GPU 1; on a single-GPU
@@ -489,7 +491,8 @@ Validate the Hermes-native MCP entry from inside the sandbox:
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- hermes mcp list
 ```
 
-Open the Hermes dashboard. This is the human UI for sending prompts to Hermes:
+**Human checkpoint: open the Hermes dashboard.** This is the human UI for
+sending prompts to Hermes:
 
 ```bash
 nemohermes "$NEMOCLAW_SANDBOX_NAME" dashboard-url --quiet
