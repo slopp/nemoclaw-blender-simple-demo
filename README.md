@@ -234,6 +234,10 @@ In the visible Blender desktop, install and enable
 `$DEMO_ROOT/blender-mcp/blender_mcp_addon.py`, then start the add-on server from
 its Blender side panel. Leave Blender open.
 
+Review the public Blender MCP add-on behavior before using it on sensitive
+systems. During this guide run, the proxy startup path emitted a telemetry POST
+from the `blender-mcp` package.
+
 Start the host HTTP/SSE proxy:
 
 ```bash
@@ -241,7 +245,7 @@ uvx mcp-proxy --host 0.0.0.0 --port 9877 uvx blender-mcp \
   > "$DEMO_ROOT/out/blender-mcp-proxy.log" 2>&1 &
 echo $! > "$DEMO_ROOT/out/blender-mcp-proxy.pid"
 
-curl -fsS http://127.0.0.1:9877/sse >/dev/null || true
+curl -fsS --max-time 3 http://127.0.0.1:9877/sse >/dev/null || true
 ```
 
 ## B. NemoClaw, OpenShell, Hermes, and Local Ultra
@@ -289,6 +293,9 @@ provider:
 export ULTRA_BASE_URL="https://nemotron-ultra.apps.inference-tme.nvidia.com/v1"
 export ULTRA_MODEL="nvidia/NVIDIA-Nemotron-3-Ultra-550B-NVFP4"
 export ULTRA_API_KEY="none_needed"
+curl -fsS --max-time 10 \
+  -H "Authorization: Bearer $ULTRA_API_KEY" \
+  "$ULTRA_BASE_URL/models" | jq .
 ```
 
 Install NemoClaw for Hermes.
@@ -357,12 +364,15 @@ host endpoint.
 ```bash
 nemohermes "$NEMOCLAW_SANDBOX_NAME" upload \
   "$GUIDE_REPO/scripts/configure_hermes_blender_mcp.py" \
-  /tmp/configure_hermes_blender_mcp.py
+  /tmp/
 
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 60 -- \
   python3 /tmp/configure_hermes_blender_mcp.py "$HOST_IP"
 
-nemohermes "$NEMOCLAW_SANDBOX_NAME" gateway restart
+timeout 90s nemohermes "$NEMOCLAW_SANDBOX_NAME" gateway restart || {
+  echo "Gateway restart did not return within 90 seconds; check status and logs."
+  nemohermes "$NEMOCLAW_SANDBOX_NAME" status
+}
 ```
 
 Open the Hermes dashboard:
