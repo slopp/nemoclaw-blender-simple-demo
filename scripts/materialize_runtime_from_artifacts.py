@@ -43,8 +43,8 @@ def main() -> int:
         tmp_path = Path(tmp)
         with zipfile.ZipFile(args.addon_zip, "r") as archive:
             archive.extractall(tmp_path)
-        addon_root = _find_addon_root(tmp_path)
-        manifest = load_embedded_manifest(addon_root)
+        extension_root = _find_extension_root(tmp_path)
+        manifest = load_embedded_manifest(extension_root)
         kwargs = {}
         if "source" in inspect.signature(materialize_runtime).parameters:
             kwargs["source"] = str(args.artifact_dir)
@@ -68,13 +68,17 @@ def main() -> int:
     return 0
 
 
-def _find_addon_root(root: Path) -> Path:
-    candidates = [path for path in root.rglob("ovrtx_blender_example") if path.is_dir()]
-    if not candidates:
-        raise SystemExit("ovrtx_blender_example package not found in add-on ZIP")
-    return candidates[0]
+def _find_extension_root(root: Path) -> Path:
+    manifests = [path for path in root.rglob("runtime-bundle-manifest.json") if path.is_file()]
+    if not manifests:
+        raise SystemExit("runtime-bundle-manifest.json not found in add-on ZIP")
+    extension_root = manifests[0].parent
+    if not (extension_root / "ovrtx_blender_example").is_dir():
+        raise SystemExit(
+            "runtime manifest was found, but ovrtx_blender_example package is missing"
+        )
+    return extension_root
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
