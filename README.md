@@ -14,6 +14,21 @@ The target outcome is:
 - You can ask Hermes to load the Blender 2.81 splash scene, render a PNG, and
   run the native OVPhysX stair-drop validation plus GIF capture.
 
+## Execution Model
+
+Most steps are intentionally scriptable so a human operator or an agent can run
+them over SSH. The required human desktop checkpoints are called out explicitly.
+
+- **Scriptable:** run in a host shell or SSH session.
+- **Human desktop:** run from the logged-in NoMachine desktop when the visible
+  Blender UI must exist.
+- **Hermes prompt:** send to Hermes after the sandbox and Blender MCP are
+  configured.
+
+Keep one visible Blender process running for the demo. The scripted Blender MCP
+launch below starts Blender, opens the splash scene, and starts the MCP socket
+server in that same visible process.
+
 ## Known Workarounds
 
 - Official Blender 5.1 Linux downloads are x64. Linux ARM64 builds Blender
@@ -25,7 +40,7 @@ The target outcome is:
 
 ## Start Here
 
-Run these commands on the target machine.
+Run these scriptable commands on the target machine.
 
 ```bash
 mkdir -p "$HOME/work"
@@ -44,7 +59,9 @@ export NEMOCLAW_SANDBOX_NAME="ov-blender-hermes"
 mkdir -p "$DEMO_ROOT" "$OV_ARTIFACT_DIR" "$DEMO_ROOT/out" "$DEMO_ROOT/scenes"
 ```
 
-Clone the OVRTX/OVPhysX Blender example repository.
+Clone the OVRTX/OVPhysX Blender example repository. This is scriptable, but a
+human may need to complete `gh auth login` if GitHub access is not already
+configured.
 
 ```bash
 gh auth status || gh auth login
@@ -165,7 +182,8 @@ if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
 fi
 ```
 
-Set up remote desktop access. If NoMachine is already installed, just verify it.
+Set up remote desktop access. This is scriptable until the final human login.
+If NoMachine is already installed, just verify it.
 
 ```bash
 sudo /usr/NX/bin/nxserver --status || true
@@ -188,19 +206,10 @@ sudo apt-get install -y "$HOME/Downloads"/nomachine_*_arm64.deb
 sudo /usr/NX/bin/nxserver --status
 ```
 
-Connect with the NoMachine client, choose the GDM/local physical desktop, log in
-as the OS user, and start Blender from the desktop terminal:
-
-```bash
-blender &
-```
-
-On the validated DGX ARM64 station where GPU 0 is the RTX PRO device, launch
-Blender with the same GPU pin used by the OVRTX validator:
-
-```bash
-CUDA_VISIBLE_DEVICES=0 SRTX_ACTIVE_CUDA_GPUS=0 blender &
-```
+Human desktop checkpoint: connect with the NoMachine client, choose the
+GDM/local physical desktop, and log in as the OS user. Do not start Blender yet;
+the later MCP launch command starts the one visible Blender process used for the
+demo.
 
 Download the Blender 2.81 splash scene.
 
@@ -251,16 +260,8 @@ blender --factory-startup --background \
   --command extension install-file -r user_default --enable "$OV_ADDON_ZIP"
 ```
 
-Install the native runtime bundle. First try the add-on UI in Blender:
-
-1. Open `Edit > Preferences > Add-ons`.
-2. Open `ovrtx Blender Example`.
-3. Set `Install Runtime From` to `$OV_ARTIFACT_DIR`.
-4. Select `Install Runtime`, then `Verify Runtime`.
-5. Wait for `Runtime: ready` and `Preflight: pass`.
-
-If the installed add-on does not show `Install Runtime From`, use the local
-materializer workaround:
+Install the native runtime bundle from the release artifacts. Use this
+scriptable path by default:
 
 ```bash
 python3 "$GUIDE_REPO/scripts/materialize_runtime_from_artifacts.py" \
@@ -270,13 +271,17 @@ python3 "$GUIDE_REPO/scripts/materialize_runtime_from_artifacts.py" \
   --storage-root "$HOME/.config/blender/5.1/extensions/.user/user_default/ovrtx_blender_example"
 ```
 
+Optional human UI verification after Blender is visible: open
+`Edit > Preferences > Add-ons > ovrtx Blender Example` and confirm
+`Runtime: ready` and `Preflight: pass`.
+
 OVPhysX is included in the OVRTX runtime component graph. Do not install a
 separate unrelated OVPhysX build; validate the runtime-installed
 `ovphysx_grpc_server` through the demo's OVPhysX checks.
 
-Install Blender MCP on the host. This guide uses the public `blender-mcp`
-pattern: a Blender add-on listening on local TCP and an HTTP/SSE proxy that the
-sandbox can reach.
+Prepare Blender MCP on the host. This guide uses the public `blender-mcp`
+pattern: a Blender-side TCP server plus a host HTTP proxy that the sandbox can
+reach. Downloading the add-on and starting the proxy are scriptable.
 
 ```bash
 mkdir -p "$DEMO_ROOT/blender-mcp"
@@ -288,10 +293,6 @@ python3 -m venv "$DEMO_ROOT/venvs/host-tools"
 pip install --upgrade pip uv
 export PATH="$DEMO_ROOT/venvs/host-tools/bin:$PATH"
 ```
-
-In the visible Blender desktop, install and enable
-`$DEMO_ROOT/blender-mcp/blender_mcp_addon.py`, then start the add-on server from
-its Blender side panel. Leave Blender open.
 
 Review the public Blender MCP add-on behavior before using it on sensitive
 systems. During this guide run, the proxy startup path emitted a telemetry POST
@@ -307,11 +308,45 @@ echo $! > "$DEMO_ROOT/out/blender-mcp-proxy.pid"
 curl -fsS --max-time 3 http://127.0.0.1:9877/sse >/dev/null || true
 ```
 
-## B. NemoClaw, OpenShell, Hermes, and Local Ultra
+Human desktop checkpoint: start the visible Blender process and MCP socket
+server from a terminal inside the NoMachine desktop. This command opens the
+splash scene and starts Blender MCP on `127.0.0.1:9876`; leave this Blender
+window open.
 
-Start a local OpenAI-compatible vLLM server. The remote TME Ultra endpoint can
-be unavailable, so this guide uses the NVIDIA Nemotron 3 Ultra DGX Station
-deployment path: `vllm/vllm-openai:v0.22.0` serving
+```bash
+export BLENDER_MCP_ADDON="$DEMO_ROOT/blender-mcp/blender_mcp_addon.py"
+export BLENDER_MCP_HOST=127.0.0.1
+export BLENDER_MCP_PORT=9876
+
+# Use this on DGX ARM64 when GPU 0 is the RTX PRO render device.
+CUDA_VISIBLE_DEVICES=0 SRTX_ACTIVE_CUDA_GPUS=0 \
+  blender "$DEMO_ROOT/scenes/thejunkshopsplashscreen.blend" \
+  --python "$GUIDE_REPO/scripts/start_visible_blender_mcp.py" \
+  > "$DEMO_ROOT/out/visible-blender-mcp.log" 2>&1 &
+```
+
+On x64 or a host where GPU pinning is unnecessary, omit the two GPU environment
+variables:
+
+```bash
+BLENDER_MCP_ADDON="$DEMO_ROOT/blender-mcp/blender_mcp_addon.py" \
+  blender "$DEMO_ROOT/scenes/thejunkshopsplashscreen.blend" \
+  --python "$GUIDE_REPO/scripts/start_visible_blender_mcp.py" \
+  > "$DEMO_ROOT/out/visible-blender-mcp.log" 2>&1 &
+```
+
+Scriptable verification from any host shell:
+
+```bash
+tail -n 50 "$DEMO_ROOT/out/visible-blender-mcp.log"
+grep -q "BLENDER_MCP_READY" "$DEMO_ROOT/out/visible-blender-mcp.log"
+```
+
+## B. Start Local Ultra with vLLM
+
+Start a local OpenAI-compatible vLLM server. This is a long-running prerequisite
+for Hermes. This guide uses the NVIDIA Nemotron 3 Ultra DGX Station deployment
+path: `vllm/vllm-openai:v0.22.0` serving
 `nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4` as `nemotron-ultra`. The
 launcher also enables the Nemotron v3 reasoning parser and Qwen3 Coder tool
 parser required for agent use.
@@ -319,8 +354,9 @@ parser required for agent use.
 ```bash
 docker pull vllm/vllm-openai:v0.22.0
 
-# Required if the Hugging Face model is gated for your account.
-hf auth login
+# Human credential checkpoint: required if the Hugging Face model is gated for
+# your account. Leave HF_TOKEN unset only when the model is already accessible.
+export HF_TOKEN="hf_..."
 
 # Pick the GB300. On the validated two-GPU station it is GPU 1; on a single-GPU
 # DGX Station, use `all`.
@@ -351,6 +387,8 @@ docker logs -f nemotron-ultra-vllm
 docker rm -f nemotron-ultra-vllm
 ```
 
+## C. NemoClaw, OpenShell, and Hermes
+
 Install NemoClaw for Hermes.
 
 ```bash
@@ -369,10 +407,14 @@ from a login shell or export the same PATH first:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Create the Hermes sandbox, then point it at the running local vLLM server:
+Create the Hermes sandbox, then point it at the running local vLLM server. If
+you are validating beside an existing NemoClaw sandbox on the same host, set a
+separate gateway port before onboarding and keep that environment variable on
+every later `nemohermes` command:
 
 ```bash
 export NEMOCLAW_SANDBOX_NAME="${NEMOCLAW_SANDBOX_NAME:-ov-blender-hermes}"
+export NEMOCLAW_GATEWAY_PORT="${NEMOCLAW_GATEWAY_PORT:-18081}"
 export NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1
 export NEMOCLAW_VLLM_LOCAL_TOKEN="${NEMOCLAW_VLLM_LOCAL_TOKEN:-none_needed}"
 export NEMOCLAW_PROVIDER=vllm
@@ -391,14 +433,7 @@ nemohermes "$NEMOCLAW_SANDBOX_NAME" status
 
 `NEMOCLAW_PROVIDER=vllm` selects the running local vLLM server in unattended
 mode. Do not set `NEMOCLAW_VLLM_MODEL` for this externally started vLLM server;
-that variable is reserved for NemoClaw's managed-vLLM install path. If you are
-validating this guide beside an existing NemoClaw sandbox on the same host, use
-a separate gateway before onboarding and keep that environment variable on every
-later `nemohermes` command:
-
-```bash
-export NEMOCLAW_GATEWAY_PORT=18081
-```
+that variable is reserved for NemoClaw's managed-vLLM install path.
 
 Install the public Blender/OV skills from the checked-out `main` branch into
 Hermes:
@@ -441,7 +476,7 @@ Validate the Hermes-native MCP entry from inside the sandbox:
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- hermes mcp list
 ```
 
-Open the Hermes dashboard:
+Open the Hermes dashboard. This is the human UI for sending prompts to Hermes:
 
 ```bash
 nemohermes "$NEMOCLAW_SANDBOX_NAME" dashboard-url --quiet
@@ -453,27 +488,20 @@ For remote use, forward the dashboard and API from your laptop:
 ssh -L 18789:127.0.0.1:18789 -L 8642:127.0.0.1:8642 <user>@<host>
 ```
 
-## C. Run the Demo
+## D. Run the Demo
 
-Keep the NoMachine desktop open with Blender visible. In Blender, open the splash
-scene if it is not already open:
+Keep the NoMachine desktop open with the single Blender process started in
+section A. Set the visible scene to the OVRTX render engine through MCP instead
+of clicking Blender UI:
 
 ```bash
-blender "$DEMO_ROOT/scenes/thejunkshopsplashscreen.blend" &
+nemohermes "$NEMOCLAW_SANDBOX_NAME" agent \
+  "Use the configured Blender MCP server. Run Python in Blender to set bpy.context.scene.render.engine = 'OVRTX_EXAMPLE' and report the current render engine."
 ```
 
-Set the visible scene to the OVRTX render engine. In Blender, use
-`Render Properties > Render Engine > OVRTX Example`. To verify or set it from
-the Python console:
-
-```python
-import bpy
-bpy.context.scene.render.engine = "OVRTX_EXAMPLE"
-print(bpy.context.scene.render.engine)
-```
-
-In Hermes, first run the Blender control smoke test from
-`prompts/demo-prompts.md`.
+Hermes prompt: first run the Blender control smoke test from
+`prompts/demo-prompts.md`. This should make a harmless visible change in the
+already-open Blender desktop.
 
 Then render the splash scene. Replace placeholders before sending:
 
@@ -486,7 +514,8 @@ sed \
   "$GUIDE_REPO/prompts/demo-prompts.md"
 ```
 
-For the OVPhysX validation, ask Hermes to run the native stair-drop prompt from
+Hermes prompt: for the OVPhysX validation, ask Hermes to run the native
+stair-drop prompt from
 `prompts/demo-prompts.md`. If Hermes produces rendered frames, assemble the GIF:
 
 ```bash
@@ -501,6 +530,20 @@ Inspect outputs on the host:
 ```bash
 ls -la "$DEMO_ROOT/out"
 find "$DEMO_ROOT/out" -maxdepth 3 -type f | sort
+```
+
+If Hermes saves an output inside the sandbox, download it to the host with
+NemoHermes or OpenShell:
+
+```bash
+nemohermes "$NEMOCLAW_SANDBOX_NAME" download \
+  /sandbox/renders/rendered_beauty_shot.png \
+  "$DEMO_ROOT/out/rendered_beauty_shot.png"
+
+openshell --gateway "nemoclaw-${NEMOCLAW_GATEWAY_PORT:-18081}" sandbox download \
+  "$NEMOCLAW_SANDBOX_NAME" \
+  /sandbox/renders/rendered_beauty_shot.png \
+  "$DEMO_ROOT/out/rendered_beauty_shot.png"
 ```
 
 ## Success Criteria
