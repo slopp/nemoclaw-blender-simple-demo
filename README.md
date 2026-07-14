@@ -224,8 +224,10 @@ mkdir -p "$DEMO_ROOT/blender-mcp"
 curl -fL https://raw.githubusercontent.com/ahujasid/blender-mcp/main/addon.py \
   -o "$DEMO_ROOT/blender-mcp/blender_mcp_addon.py"
 
-python3 -m pip install --user uv
-export PATH="$HOME/.local/bin:$PATH"
+python3 -m venv "$DEMO_ROOT/venvs/host-tools"
+. "$DEMO_ROOT/venvs/host-tools/bin/activate"
+pip install --upgrade pip uv
+export PATH="$DEMO_ROOT/venvs/host-tools/bin:$PATH"
 ```
 
 In the visible Blender desktop, install and enable
