@@ -52,6 +52,7 @@ cd nemoclaw-blender-simple-demo
 export GUIDE_REPO="$PWD"
 export DEMO_ROOT="$HOME/work/ov-blender-hermes-demo"
 export OV_REPO="$DEMO_ROOT/ov-blender-example-internal"
+export OV_REPO_SANDBOX="/sandbox/ov-blender-example-internal"
 export OV_ARTIFACT_DIR="$DEMO_ROOT/ov-artifacts"
 export OV_SOURCE_REPO_URL="${OV_SOURCE_REPO_URL:-https://github.com/NVIDIA-Omniverse/ov-blender-example-internal.git}"
 export OV_GITHUB_REPO="${OV_GITHUB_REPO:-NVIDIA-Omniverse/ov-blender-example-internal}"
@@ -443,6 +444,18 @@ cd "$GUIDE_REPO"
 ./scripts/install_public_skills.sh "$NEMOCLAW_SANDBOX_NAME" "$OV_REPO"
 ```
 
+Upload the checked-out repo into the sandbox. This is separate from skill
+installation: Hermes needs the repo source, public tests, fixtures, and helper
+files when a prompt asks it to run the real OVPhysX validation.
+
+```bash
+export OV_REPO_SANDBOX="${OV_REPO_SANDBOX:-/sandbox/ov-blender-example-internal}"
+./scripts/upload_ov_repo_to_sandbox.sh \
+  "$NEMOCLAW_SANDBOX_NAME" \
+  "$OV_REPO" \
+  "$OV_REPO_SANDBOX"
+```
+
 Allow the sandbox to reach the host Blender MCP proxy:
 
 ```bash
@@ -508,9 +521,11 @@ Then render the splash scene. Replace placeholders before sending:
 ```bash
 SCENE_PATH="$DEMO_ROOT/scenes/thejunkshopsplashscreen.blend"
 OUTPUT_DIR="$DEMO_ROOT/out"
+OV_REPO_SANDBOX="${OV_REPO_SANDBOX:-/sandbox/ov-blender-example-internal}"
 sed \
   -e "s|SCENE_PATH|$SCENE_PATH|g" \
   -e "s|OUTPUT_DIR|$OUTPUT_DIR|g" \
+  -e "s|OV_REPO_SANDBOX|$OV_REPO_SANDBOX|g" \
   "$GUIDE_REPO/prompts/demo-prompts.md"
 ```
 

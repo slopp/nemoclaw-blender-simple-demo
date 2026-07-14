@@ -34,8 +34,13 @@ Cycles or Eevee render as OVRTX.
 
 ```text
 Use ovphysx-simulation-workflow and ovphysx-drop-contact-acceptance. Run the
-real OVPhysX stair-drop fixture from the ov-blender-example public tests. Save
-all evidence under:
+real OVPhysX stair-drop fixture from the ov-blender-example public tests. The
+ov-blender-example checkout is available inside the sandbox at:
+
+OV_REPO_SANDBOX
+
+Use fixtures, tests, and helper scripts from that checkout. Save all evidence
+under:
 
 OUTPUT_DIR/stair-drop
 
@@ -47,6 +52,6 @@ Required outputs:
 
 If native OVPhysX is unavailable, stop with a blocked report. Do not substitute
 Blender rigid bodies, hand-authored keyframes, or ballistic math and call that
-native OVPhysX.
+native OVPhysX. If OV_REPO_SANDBOX or the expected public test fixture is
+missing, stop with a blocked report that names the missing path.
 ```
-
