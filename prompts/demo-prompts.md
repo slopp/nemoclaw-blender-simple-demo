@@ -33,6 +33,14 @@ the OVRTX color setting use
 "ldr_rgba8_display_passthrough"`. Do not use a property named
 `color_presentation`.
 
+Before calling `bpy.ops.render.render`, clear OVRTX state for this visible
+Blender process. In Blender Python, import
+`bl_ext.user_default.ovrtx_blender_example.ovrtx_blender_example.scene_generation_sessions`
+and call `close()`. Then use the OVRTX control plane on `127.0.0.1:50051` to
+delete any listed simulation IDs that start with `ovrtx-blender-` and end with
+the current Blender process PID. The guide script
+`scripts/render_visible_blender_ovrtx_smoke.py` is the reference behavior.
+
 Report whether the active render engine is OVRTX_EXAMPLE and whether the output
 file exists. Do not label a Cycles or Eevee render as OVRTX. If Blender writes
 a different extension than `.png`, report the actual path.

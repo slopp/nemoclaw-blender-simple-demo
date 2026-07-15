@@ -43,6 +43,13 @@ scene and starts the MCP socket server in that same process.
   x64 grpc/protobuf native Python dependencies inside the ARM64 zip. The ARM64
   repair command below is a validation-only workaround until the artifact is
   rebuilt with native AArch64 dependencies.
+- Some current add-on builds can fail final renders with either
+  `Operator bpy.ops.wm.usd_export.poll() failed, context is incorrect` or a
+  retained material replay error on
+  `/World/_materials/.../Principled_BSDF.inputs:emissiveColor`. Apply the
+  render-context patch below after installing the extension. Use the scripted
+  OVRTX smoke render below for validation; it clears Blender scene-generation
+  state and current-PID OVRTX worker simulations before rendering.
 
 ## Start Here
 
@@ -278,6 +285,16 @@ blender --factory-startup --background \
   --command extension install-file -r user_default --enable "$OV_ADDON_ZIP"
 ```
 
+Apply the temporary OVRTX final-render context patch. This patches the installed
+extension package and, when present, the cloned source checkout. If the released
+artifact already contains the fix, the command reports `already patched`.
+
+```bash
+python3 "$GUIDE_REPO/scripts/patch_ovrtx_render_context.py" \
+  --repo "$OV_REPO" \
+  --extension-package "$HOME/.config/blender/5.1/extensions/user_default/ovrtx_blender_example/ovrtx_blender_example"
+```
+
 Install the native runtime bundle from the release artifacts. Use this
 scriptable path by default:
 
@@ -388,7 +405,16 @@ Scriptable verification from any host shell:
 tail -n 50 "$DEMO_ROOT/out/visible-blender-mcp.log"
 grep -q "BLENDER_MCP_READY" "$DEMO_ROOT/out/visible-blender-mcp.log"
 python3 "$GUIDE_REPO/scripts/verify_visible_blender_ovrtx.py" --wait 120
+python3 "$GUIDE_REPO/scripts/render_visible_blender_ovrtx_smoke.py" \
+  --output "$DEMO_ROOT/out/ovrtx-render-smoke.png" \
+  --timeout 900
+file "$DEMO_ROOT/out/ovrtx-render-smoke.png"
 ```
+
+The smoke render intentionally resets OVRTX scene-generation state before it
+renders. On the current ARM64 validation setup, repeated manual UI renders can
+still hit retained-material replay errors in the splash scene. Prefer this
+scripted render path, or restart Blender before a one-off manual render test.
 
 ## B. Start Local Ultra with vLLM
 
