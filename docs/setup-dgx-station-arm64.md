@@ -328,11 +328,12 @@ Hermes chat session loads the skills; do not restart the OpenShell gateway.
 
 Installing an upstream skill installs agent instructions, not every optional
 application named by that skill. In particular, this guide does **not** install
-the official SimReady Blender add-on or SimReady Foundations content. The
-`simready-addon-install-and-authoring` skill must report a blocked preflight
-unless the user separately provides a supported official distribution. OVRTX
-rendering and the native OVPhysX stair-drop demo in this guide do not require
-that optional SimReady authoring package.
+SimReady authoring tooling. The `simready-addon-install-and-authoring` skill
+refers to an official add-on, but no public NVIDIA SimReady Blender add-on
+distribution or supported Linux ARM64 installation path has been identified.
+Treat that skill as unavailable unless NVIDIA supplies an explicit package,
+version, documentation, and license. OVRTX rendering and the native OVPhysX
+stair-drop demo in this guide do not require such a package.
 
 ### Validation
 

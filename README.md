@@ -152,9 +152,10 @@ OpenShell policy, a small host runtime boundary skill, and generic helpers for
 native pose sampling and Blender replay.
 
 Installing the upstream skills does not install every optional product they
-describe. The official SimReady Blender add-on and SimReady Foundations content
-are not included in this setup. SimReady authoring skills therefore remain
-blocked unless the user supplies a supported official distribution; the
+describe. The upstream SimReady authoring skill refers to an official Blender
+add-on, but no public NVIDIA distribution or supported Linux ARM64 installation
+path has been identified. Treat that skill as unavailable unless NVIDIA
+supplies an explicit package, version, documentation, and license. The
 validated OVRTX rendering and OVPhysX simulation workflows do not depend on it.
 
 Temporary compatibility patches are identified in the setup guide so they can

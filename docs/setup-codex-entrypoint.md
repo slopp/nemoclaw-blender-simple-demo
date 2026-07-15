@@ -105,9 +105,9 @@ as Hermes and automatically follow later `git pull` updates.
 
 These links provide instructions only. They do not install optional software
 referenced by a skill. For example, the SimReady skills are discoverable, but
-the official SimReady Blender add-on and Foundations content are outside the
-primary setup and remain unavailable until the user supplies a supported
-official distribution.
+no public NVIDIA SimReady Blender add-on distribution or supported Linux ARM64
+installation path has been identified. Those skills remain unavailable unless
+NVIDIA supplies an explicit package, version, documentation, and license.
 
 ### Command
 
