@@ -699,6 +699,9 @@ nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 1200 -- \
 The three shorter prepare/preview, simulate, and replay prompts in
 `prompts/demo-prompts.md` are easier to observe and isolate during development.
 The helper itself assembles the GIF; no separate ffmpeg command is required.
+The helper reuses and resets its dedicated fixture scene, so the complete
+prompt can be run repeatedly without deleting all objects from the long-lived
+Blender process.
 
 Inspect outputs on the host:
 

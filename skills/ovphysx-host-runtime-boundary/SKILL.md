@@ -3,7 +3,7 @@ name: ovphysx-host-runtime-boundary
 description: Route OVPhysX work correctly when Hermes runs in an OpenShell sandbox while the native OVRTX/OVPhysX runtime is installed beside a visible host Blender process.
 license: Apache-2.0
 metadata:
-  version: "0.2"
+  version: "0.3"
   domain: physical-ai
 ---
 # OVPhysX Host Runtime Boundary
@@ -65,6 +65,11 @@ Supported actions are:
 For a complete request, call the needed actions in that order. Each action
 returns a compact JSON receipt. Do not fetch or print the complete pose timeline
 or native diagnostics through MCP.
+
+The helper owns a dedicated Blender scene for each active fixture. Repeated
+`preview` and `replay` calls for the same fixture reuse that scene and restore
+its imported transforms before applying new samples. Do not clear the scene or
+re-import the fixture manually between helper actions.
 
 The installed configuration supplies demo defaults. For another task, put only
 the necessary overrides in the request: `fixture`, `body_prims`, `output_dir`,

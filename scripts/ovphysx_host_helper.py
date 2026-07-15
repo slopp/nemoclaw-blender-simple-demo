@@ -12,6 +12,8 @@ from typing import Any, Mapping
 
 
 CONFIG_PATH = Path.home() / ".config" / "nemoclaw-blender" / "ovphysx-helper.json"
+FIXTURE_SOURCE_KEY = "nemoclaw_ovphysx_fixture_source"
+FIXTURE_TRANSFORMS_KEY = "nemoclaw_ovphysx_fixture_transforms"
 
 
 def _load_json(path: Path) -> dict[str, Any]:
@@ -163,11 +165,6 @@ def _simulate(settings: Mapping[str, Any]) -> dict[str, Any]:
     return status
 
 
-def _clear_scene(bpy: Any) -> None:
-    bpy.ops.object.select_all(action="SELECT")
-    bpy.ops.object.delete(use_global=False)
-
-
 def _close_scene_generation(settings: Mapping[str, Any]) -> str:
     import importlib
 
@@ -183,9 +180,53 @@ def _close_scene_generation(settings: Mapping[str, Any]) -> str:
     return "closed"
 
 
+def _restore_fixture_transforms(bpy: Any, scene: Any) -> bool:
+    from mathutils import Matrix
+
+    encoded = scene.get(FIXTURE_TRANSFORMS_KEY)
+    if not isinstance(encoded, str):
+        return False
+    transforms = json.loads(encoded)
+    scene_objects = {obj.name: obj for obj in scene.objects}
+    restored = 0
+    for name, values in transforms.items():
+        obj = scene_objects.get(name)
+        if obj is None or len(values) != 16:
+            continue
+        obj.matrix_world = Matrix([values[index : index + 4] for index in range(0, 16, 4)])
+        restored += 1
+    bpy.context.view_layer.update()
+    return restored > 0
+
+
+def _remember_fixture_transforms(scene: Any, objects: list[Any]) -> None:
+    transforms = {
+        obj.name: [float(value) for row in obj.matrix_world for value in row]
+        for obj in objects
+    }
+    scene[FIXTURE_TRANSFORMS_KEY] = json.dumps(transforms, sort_keys=True)
+
+
+def _switch_to_fixture_scene(bpy: Any, fixture: Path) -> Any:
+    window = bpy.context.window
+    if window is None:
+        raise RuntimeError("a visible Blender window is required to replace the fixture scene")
+    scene = bpy.data.scenes.new(f"NemoClaw OVPhysX - {fixture.stem}")
+    window.scene = scene
+    return scene
+
+
 def _import_fixture(bpy: Any, fixture: Path, replace_scene: bool) -> list[Any]:
+    source = str(fixture.resolve())
+    scene = bpy.context.scene
+    if replace_scene and scene.get(FIXTURE_SOURCE_KEY) == source:
+        if not _restore_fixture_transforms(bpy, scene):
+            raise RuntimeError("the active fixture scene has no reusable transform snapshot")
+        return list(scene.objects)
     if replace_scene:
-        _clear_scene(bpy)
+        # Keep the previous scene intact. Deleting all objects after OVRTX export and
+        # USD import can crash Blender 5.1 in native object cleanup on repeated runs.
+        scene = _switch_to_fixture_scene(bpy, fixture)
     before = set(bpy.data.objects)
     result = bpy.ops.wm.usd_import(filepath=str(fixture))
     if "FINISHED" not in result:
@@ -193,6 +234,9 @@ def _import_fixture(bpy: Any, fixture: Path, replace_scene: bool) -> list[Any]:
     imported = [obj for obj in bpy.data.objects if obj not in before]
     if not imported:
         imported = list(bpy.context.scene.objects)
+    if replace_scene:
+        scene[FIXTURE_SOURCE_KEY] = source
+        _remember_fixture_transforms(scene, imported)
     return imported
 
 
@@ -289,14 +333,22 @@ def _name_candidates(prim_path: str) -> list[str]:
 
 
 def _resolve_body_objects(bpy: Any, prim_paths: list[str], explicit: Mapping[str, str]) -> dict[str, Any]:
+    scene_objects = {obj.name: obj for obj in bpy.context.scene.objects}
     mapping = {}
     for prim_path in prim_paths:
         requested = explicit.get(prim_path)
         candidates = ([requested] if requested else []) + _name_candidates(prim_path)
-        obj = next((bpy.data.objects.get(name) for name in candidates if name and bpy.data.objects.get(name)), None)
+        obj = next((scene_objects.get(name) for name in candidates if name and scene_objects.get(name)), None)
         if obj is None:
             leaf = prim_path.rstrip("/").split("/")[-1].lower()
-            obj = next((item for item in bpy.context.scene.objects if item.name.lower().endswith(leaf)), None)
+            obj = next(
+                (
+                    item
+                    for item in bpy.context.scene.objects
+                    if item.name.lower() == leaf or item.name.lower().startswith(f"{leaf}.")
+                ),
+                None,
+            )
         if obj is None:
             raise KeyError(f"no Blender object found for OVPhysX prim {prim_path}")
         mapping[prim_path] = obj
