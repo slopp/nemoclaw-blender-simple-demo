@@ -503,6 +503,13 @@ Required evidence:
 - `render_class` is `blender-replay`.
 - The GIF exists and Blender remains running.
 
+## 12. Optional: Add Codex as an Entry Point
+
+The NemoClaw-first installation is complete. To use Codex as a general
+intelligence layer that delegates Blender and Omniverse work to this Hermes
+agent, continue with the supplementary
+[Codex entry-point setup](setup-codex-entrypoint.md).
+
 ## Troubleshooting
 
 ### Blender ARM64 source build cannot complete

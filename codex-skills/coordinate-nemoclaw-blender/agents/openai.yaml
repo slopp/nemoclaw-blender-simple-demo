@@ -1,0 +1,4 @@
+interface:
+  display_name: "Coordinate NemoClaw Blender"
+  short_description: "Delegate Blender and OV work to Hermes"
+  default_prompt: "Use NemoClaw Hermes to perform this Blender or Omniverse task and validate its host artifacts."
