@@ -51,9 +51,6 @@ scene and starts the MCP socket server in that same process.
   render-context patch below after installing the extension. Use the scripted
   OVRTX smoke render below for validation; it clears Blender scene-generation
   state and current-PID OVRTX worker simulations before rendering.
-- Current `main` calls `shutil.which()` in `run_ovphysx_drop_probe.py` without
-  importing `shutil`. Apply the idempotent probe patch below until upstream
-  includes the missing import.
 
 ## Start Here
 
@@ -69,7 +66,6 @@ cd nemoclaw-blender-simple-demo
 export GUIDE_REPO="$PWD"
 export DEMO_ROOT="$HOME/work/ov-blender-hermes-demo"
 export OV_REPO="$DEMO_ROOT/ov-blender-example-internal"
-export OV_REPO_SANDBOX="/sandbox/ov-blender-example-internal"
 export OV_ARTIFACT_DIR="$DEMO_ROOT/ov-artifacts"
 export OV_SOURCE_REPO_URL="${OV_SOURCE_REPO_URL:-https://github.com/NVIDIA-Omniverse/ov-blender-example-internal.git}"
 export OV_GITHUB_REPO="${OV_GITHUB_REPO:-NVIDIA-Omniverse/ov-blender-example-internal}"
@@ -298,8 +294,6 @@ python3 "$GUIDE_REPO/scripts/patch_ovrtx_render_context.py" \
   --repo "$OV_REPO" \
   --extension-package "$HOME/.config/blender/5.1/extensions/user_default/ovrtx_blender_example/ovrtx_blender_example"
 
-python3 "$GUIDE_REPO/scripts/patch_ovphysx_probe_shutil.py" \
-  --repo "$OV_REPO"
 ```
 
 Install the native runtime bundle from the release artifacts. Use this
@@ -347,6 +341,18 @@ fi
 OVPhysX is included in the OVRTX runtime component graph. Do not install a
 separate unrelated OVPhysX build; validate the runtime-installed
 `ovphysx_grpc_server` through the demo's OVPhysX checks.
+
+Install this guide's additive host helpers. They use the upstream public add-on
+API and installed runtime without patching either one. The generated config
+contains demo defaults that Hermes can override for another host-visible USD,
+body prim set, or output directory.
+
+```bash
+export OV_RUNTIME_ROOT="$OV_EXTENSION_ROOT/runtimes/$OV_PLATFORM/current"
+cd "$GUIDE_REPO"
+./scripts/install_ovphysx_helpers.sh
+cat "$HOME/.config/nemoclaw-blender/ovphysx-helper.json"
+```
 
 Prepare Blender MCP on the host. This guide uses the public `blender-mcp`
 pattern: a Blender-side TCP server plus a host HTTP proxy that the sandbox can
@@ -575,39 +581,13 @@ cd "$GUIDE_REPO"
 ./scripts/install_public_skills.sh "$NEMOCLAW_SANDBOX_NAME" "$OV_REPO"
 ```
 
-Upload the checked-out repo into the sandbox. This is separate from skill
-installation: Hermes needs the repo source, public tests, fixtures, and helper
-files when a prompt asks it to run the real OVPhysX validation.
+The standard helper workflow does not require a copy of the OV checkout inside
+the sandbox. The native runtime, fixture preparation, sampled poses, renders,
+and reports remain on the host and are reached through Blender MCP. Upload the
+checkout with `scripts/upload_ov_repo_to_sandbox.sh` only for source-analysis
+tasks that explicitly require sandbox-local repository files.
 
-Prepare fixture data on the host first. The stair-drop USDA is tracked in Git,
-but its ambientCG CC0 textures are generated fixture data and are not committed.
-
-```bash
-(
-  cd "$OV_REPO/public"
-  python3 tests/fixtures/demo_stair_drop_1280x720/prepare.py
-)
-```
-
-```bash
-export OV_REPO_SANDBOX="${OV_REPO_SANDBOX:-/sandbox/ov-blender-example-internal}"
-./scripts/upload_ov_repo_to_sandbox.sh \
-  "$NEMOCLAW_SANDBOX_NAME" \
-  "$OV_REPO" \
-  "$OV_REPO_SANDBOX"
-```
-
-If Hermes does not see newly installed skills after this step, restart the
-sandbox gateway once and retry the prompt:
-
-```bash
-nemohermes "$NEMOCLAW_SANDBOX_NAME" gateway restart --quiet || \
-  nemohermes "$NEMOCLAW_SANDBOX_NAME" gateway restart
-```
-
-Allow the sandbox to reach the host Blender MCP proxy and the two read-only
-ambientCG endpoints used by fixture preparation. ambientCG redirects archive
-downloads to `acg-download.struffelproductions.com`, so both hosts are required.
+Allow the sandbox to reach the host Blender MCP proxy.
 
 ```bash
 export HOST_IP="$(hostname -I | awk '{print $1}')"
@@ -619,12 +599,11 @@ nemohermes "$NEMOCLAW_SANDBOX_NAME" policy-add \
   --from-file "$DEMO_ROOT/blender-mcp-host.yaml" \
   --yes
 
-nemohermes "$NEMOCLAW_SANDBOX_NAME" policy-add \
-  --from-file "$GUIDE_REPO/policies/ambientcg-fixtures.yaml" \
-  --yes
 ```
 
-These are live sandbox policy updates. Do not restart the OpenShell gateway.
+This is a live sandbox policy update. Do not restart the OpenShell gateway.
+Fixture preparation runs through the host helper, so the sandbox does not need
+direct ambientCG access for the standard demo.
 
 Register the local Blender MCP proxy with Hermes. Use the Streamable HTTP
 endpoint at `/mcp`, not the legacy SSE endpoint at `/sse`; Hermes probes the
@@ -662,46 +641,35 @@ ssh -L 18789:127.0.0.1:18789 -L 8642:127.0.0.1:8642 <user>@<host>
 ## D. Run the Demo
 
 Keep the NoMachine desktop open with the single Blender process started in
-section A. Set the visible scene to the OVRTX render engine through MCP instead
-of clicking Blender UI:
-
-```bash
-nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 600 -- hermes -z \
-  "Use the configured Blender MCP server. Run Python in Blender to set bpy.context.scene.render.engine = 'OVRTX_EXAMPLE' and report the current render engine."
-```
+section A.
 
 First run the Blender control smoke test from `prompts/demo-prompts.md`. For
-the dashboard, paste the prompt as written. For scriptable `hermes -z` runs,
-keep the prompt on one shell argument; OpenShell rejects command arguments that
-contain literal newlines.
+the dashboard, paste the prompt as written. For scriptable validation, use
+`hermes chat -q ... -Q`; this returns the final response while retaining the
+session and tool logs.
 
-Then render the splash scene. Replace placeholders before sending:
+Then render the splash scene. Replace its two placeholders before sending:
 
 ```bash
 SCENE_PATH="$DEMO_ROOT/scenes/thejunkshopsplashscreen.blend"
 OUTPUT_DIR="$DEMO_ROOT/out"
-OV_REPO_SANDBOX="${OV_REPO_SANDBOX:-/sandbox/ov-blender-example-internal}"
-OV_REPO_HOST="$OV_REPO"
-OV_RUNTIME_ROOT="$OV_EXTENSION_ROOT/runtimes/$OV_PLATFORM/current"
 sed \
   -e "s|SCENE_PATH|$SCENE_PATH|g" \
   -e "s|OUTPUT_DIR|$OUTPUT_DIR|g" \
-  -e "s|OV_REPO_SANDBOX|$OV_REPO_SANDBOX|g" \
-  -e "s|OV_REPO_HOST|$OV_REPO_HOST|g" \
-  -e "s|OV_RUNTIME_ROOT|$OV_RUNTIME_ROOT|g" \
   "$GUIDE_REPO/prompts/demo-prompts.md"
 ```
 
-Hermes prompt: for the OVPhysX validation, ask Hermes to run the native
-stair-drop prompt from
-`prompts/demo-prompts.md`. If Hermes produces rendered frames, assemble the GIF:
+For a scriptable full OVPhysX run, send the short human prompt directly:
 
 ```bash
-ffmpeg -y -framerate 12 \
-  -i "$DEMO_ROOT/out/stair-drop/frames/%04d.png" \
-  -vf "scale=960:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse" \
-  "$DEMO_ROOT/out/stair-drop/stair-drop.gif"
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 1200 -- \
+  hermes chat -Q --max-turns 15 -q \
+  "Use ovphysx-host-runtime-boundary. Run the configured native OVPhysX stair-drop demo: prepare and preview the starting scene, simulate it with authoritative pose sampling, replay those poses in visible Blender, and create a GIF. Report the native simulation status and host artifact paths. Do not substitute Blender physics or generated motion."
 ```
+
+The three shorter prepare/preview, simulate, and replay prompts in
+`prompts/demo-prompts.md` are easier to observe and isolate during development.
+The helper itself assembles the GIF; no separate ffmpeg command is required.
 
 Inspect outputs on the host:
 
@@ -731,6 +699,6 @@ openshell --gateway "nemoclaw-${NEMOCLAW_GATEWAY_PORT:-18081}" sandbox download 
 - Hermes can inspect Blender through MCP and make a harmless visible change.
 - The add-on reports `Runtime: ready` and `Preflight: pass`.
 - The splash render output exists and is identified as OVRTX, not Cycles/Eevee.
-- OVPhysX produces a real native pass/block/fail report. A GIF is only accepted
-  when its pose source is the native OVPhysX readback or is clearly labeled as a
-  diagnostic non-native fallback.
+- OVPhysX produces a real native pass/block/fail report and sampled pose
+  timeline. The GIF identifies native OVPhysX as its pose source and Blender as
+  the replay renderer.
