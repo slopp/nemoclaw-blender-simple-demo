@@ -103,6 +103,12 @@ project's coordinator skill and every `SKILL.md` directory under the checked-out
 upstream `public/skills` tree. The links keep Codex on the same OV skill source
 as Hermes and automatically follow later `git pull` updates.
 
+These links provide instructions only. They do not install optional software
+referenced by a skill. For example, the SimReady skills are discoverable, but
+the official SimReady Blender add-on and Foundations content are outside the
+primary setup and remain unavailable until the user supplies a supported
+official distribution.
+
 ### Command
 
 ```bash

@@ -151,6 +151,12 @@ The local additions are limited to installation orchestration, the explicit
 OpenShell policy, a small host runtime boundary skill, and generic helpers for
 native pose sampling and Blender replay.
 
+Installing the upstream skills does not install every optional product they
+describe. The official SimReady Blender add-on and SimReady Foundations content
+are not included in this setup. SimReady authoring skills therefore remain
+blocked unless the user supplies a supported official distribution; the
+validated OVRTX rendering and OVPhysX simulation workflows do not depend on it.
+
 Temporary compatibility patches are identified in the setup guide so they can
 be removed as ARM64 support lands upstream.
 
