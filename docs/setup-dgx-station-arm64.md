@@ -326,15 +326,6 @@ nemohermes "$NEMOCLAW_SANDBOX_NAME" policy-add \
 Skill installation messages may suggest restarting the agent gateway. A new
 Hermes chat session loads the skills; do not restart the OpenShell gateway.
 
-Installing an upstream skill installs agent instructions, not every optional
-application named by that skill. In particular, this guide does **not** install
-SimReady authoring tooling. The `simready-addon-install-and-authoring` skill
-refers to an official add-on, but no public NVIDIA SimReady Blender add-on
-distribution or supported Linux ARM64 installation path has been identified.
-Treat that skill as unavailable unless NVIDIA supplies an explicit package,
-version, documentation, and license. OVRTX rendering and the native OVPhysX
-stair-drop demo in this guide do not require such a package.
-
 ### Validation
 
 ```bash
