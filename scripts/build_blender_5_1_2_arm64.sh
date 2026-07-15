@@ -5,7 +5,7 @@ usage() {
   cat <<'USAGE'
 Build native Blender 5.1.2 for Linux ARM64 DGX-style hosts.
 
-This follows the validated DGX ARM64 path:
+This targets the DGX ARM64 path:
   - Blender source tag: v5.1.2
   - expected commit: ec6e62d40fa9e9d1bea33ad5d00148c99a4f0832
   - native dependency bundle: lib/linux_arm64

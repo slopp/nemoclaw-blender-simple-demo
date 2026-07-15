@@ -99,7 +99,7 @@ def main() -> int:
         "--extension-package",
         type=Path,
         default=Path.home()
-        / ".config/blender/5.1/extensions/.user/user_default/ovrtx_blender_example/ovrtx_blender_example",
+        / ".config/blender/5.1/extensions/user_default/ovrtx_blender_example/ovrtx_blender_example",
         help="installed ovrtx_blender_example package directory",
     )
     args = parser.parse_args()
