@@ -1,7 +1,14 @@
 #!/usr/bin/env bash
 set -u
 
-blender="${1:-$(command -v blender 2>/dev/null || true)}"
+blender_input="${1:-$(command -v blender 2>/dev/null || true)}"
+blender="$blender_input"
+if [ -n "$blender_input" ] && command -v readlink >/dev/null 2>&1; then
+  blender_resolved="$(readlink -f "$blender_input" 2>/dev/null || true)"
+  if [ -n "$blender_resolved" ]; then
+    blender="$blender_resolved"
+  fi
+fi
 failures=0
 warnings=0
 
@@ -16,9 +23,13 @@ case "$arch" in
 esac
 
 if [ -z "$blender" ] || [ ! -x "$blender" ]; then
-  fail "Blender is not executable: ${blender:-not found}"
+  fail "Blender is not executable: ${blender_input:-not found}"
   printf 'RESULT: %d failure(s), %d warning(s)\n' "$failures" "$warnings"
   exit 1
+fi
+
+if [ "$blender" != "$blender_input" ]; then
+  ok "resolved Blender symlink: $blender_input -> $blender"
 fi
 
 file_info="$(file "$blender" 2>&1)"

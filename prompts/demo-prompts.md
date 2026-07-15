@@ -25,9 +25,17 @@ the render output path to:
 
 OUTPUT_DIR/splash-ovrtx.png
 
-Run an OVRTX smoke render at low samples. Report whether the active render
-engine is OVRTX_EXAMPLE and whether the output file exists. Do not label a
-Cycles or Eevee render as OVRTX.
+Run an OVRTX smoke render at low samples. Use
+`bpy.context.scene.render.engine = "OVRTX_EXAMPLE"`,
+`bpy.context.scene.render.image_settings.file_format = "PNG"`, and if you touch
+the OVRTX color setting use
+`bpy.context.scene.ovrtx_example.color_presentation_mode =
+"ldr_rgba8_display_passthrough"`. Do not use a property named
+`color_presentation`.
+
+Report whether the active render engine is OVRTX_EXAMPLE and whether the output
+file exists. Do not label a Cycles or Eevee render as OVRTX. If Blender writes
+a different extension than `.png`, report the actual path.
 ```
 
 ## Native OVPhysX Stair Drop and GIF

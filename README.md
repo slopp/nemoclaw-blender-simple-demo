@@ -39,6 +39,10 @@ scene and starts the MCP socket server in that same process.
   fallback-only.
 - OVRTX/OVPhysX Linux release artifacts are published as GitHub prerelease
   tags: `linux-x64-dev` and `linux-aarch64-dev`.
+- Current `linux-aarch64-dev` OVRTX client artifacts have been observed with
+  x64 grpc/protobuf native Python dependencies inside the ARM64 zip. The ARM64
+  repair command below is a validation-only workaround until the artifact is
+  rebuilt with native AArch64 dependencies.
 
 ## Start Here
 
@@ -89,12 +93,21 @@ sudo apt-get update
 sudo apt-get install -y \
   ca-certificates curl git git-lfs gh jq unzip zip xz-utils \
   python3 python3-pip python3-venv ffmpeg \
-  docker.io nvidia-container-toolkit
+  nvidia-container-toolkit
+
+if ! command -v docker >/dev/null 2>&1; then
+  sudo apt-get install -y docker.io
+fi
 
 sudo systemctl enable --now docker
 sudo usermod -aG docker "$USER"
 git lfs install
 ```
+
+If Docker group membership changed, fully log out of the desktop and SSH
+sessions, then log back in before starting NemoClaw. OpenShell runs as a
+systemd user service, and `newgrp docker` in one shell does not update the
+groups inherited by that service.
 
 On Linux ARM64, install the additional native Blender build dependencies before
 building Blender from source:
@@ -118,12 +131,6 @@ fi
 If `gcc-14` and `g++-14` are unavailable from the configured Ubuntu package
 repositories, use approved Ubuntu 24.04 ARM64 GCC 14 packages. Do not use x64
 packages on ARM64.
-
-If Docker group membership changed, open a new login shell or run:
-
-```bash
-newgrp docker
-```
 
 Install Blender 5.1. Run only the command for your architecture.
 
@@ -253,6 +260,14 @@ gh release download "$OV_RELEASE_TAG" \
 
 ```bash
 export OV_ADDON_ZIP="$OV_ARTIFACT_DIR/ov-blender-example-${OV_PLATFORM}.zip"
+
+if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
+  export OV_ADDON_ZIP_PATCHED="$OV_ARTIFACT_DIR/ov-blender-example-linux-arm64-blender.zip"
+  python3 "$GUIDE_REPO/scripts/patch_arm64_extension_zip.py" \
+    "$OV_ADDON_ZIP" \
+    "$OV_ADDON_ZIP_PATCHED"
+  export OV_ADDON_ZIP="$OV_ADDON_ZIP_PATCHED"
+fi
 ```
 
 Install and enable the Blender extension headlessly from the command line. This
@@ -267,11 +282,42 @@ Install the native runtime bundle from the release artifacts. Use this
 scriptable path by default:
 
 ```bash
+export OV_EXTENSION_ROOT="$HOME/.config/blender/5.1/extensions/.user/user_default/ovrtx_blender_example"
+
 python3 "$GUIDE_REPO/scripts/materialize_runtime_from_artifacts.py" \
   --repo "$OV_REPO" \
   --addon-zip "$OV_ADDON_ZIP" \
   --artifact-dir "$OV_ARTIFACT_DIR" \
-  --storage-root "$HOME/.config/blender/5.1/extensions/.user/user_default/ovrtx_blender_example"
+  --storage-root "$OV_EXTENSION_ROOT"
+```
+
+On ARM64, verify the Python native dependencies inside the materialized runtime.
+If either command reports `x86-64`, repair the runtime with Blender's embedded
+Python. This is a workaround for the current prerelease artifact, not a
+substitute for a rebuilt ARM64 client artifact.
+
+```bash
+if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
+  export OV_NATIVE_DIR="$OV_EXTENSION_ROOT/runtimes/$OV_PLATFORM/current/native"
+  file "$OV_NATIVE_DIR/grpc/_cython"/cygrpc*.so
+  file "$OV_NATIVE_DIR/google/_upb"/_message*.so
+
+  if file "$OV_NATIVE_DIR/grpc/_cython"/cygrpc*.so "$OV_NATIVE_DIR/google/_upb"/_message*.so | grep -q 'x86-64'; then
+    export BLENDER_PY="$(
+      blender --background --factory-startup \
+        --python-expr 'import sys; print("BLENDER_PY=" + sys.executable)' 2>/dev/null |
+        sed -n 's/^BLENDER_PY=//p' |
+        tail -1
+    )"
+    "$BLENDER_PY" -m ensurepip --upgrade
+    "$BLENDER_PY" -m pip install \
+      --target "$OV_NATIVE_DIR" \
+      --upgrade \
+      --force-reinstall \
+      --only-binary=:all: \
+      grpcio==1.81.1 protobuf
+  fi
+fi
 ```
 
 OVPhysX is included in the OVRTX runtime component graph. Do not install a
@@ -320,6 +366,8 @@ if [ "$(uname -m)" = "aarch64" ] || [ "$(uname -m)" = "arm64" ]; then
   gpu_env=(CUDA_VISIBLE_DEVICES="${CUDA_VISIBLE_DEVICES:-0}" SRTX_ACTIVE_CUDA_GPUS="${SRTX_ACTIVE_CUDA_GPUS:-0}")
 fi
 
+rm -rf /tmp/ov-blender-example
+
 env \
   BLENDER_MCP_ADDON="$DEMO_ROOT/blender-mcp/blender_mcp_addon.py" \
   BLENDER_MCP_HOST=127.0.0.1 \
@@ -339,6 +387,7 @@ Scriptable verification from any host shell:
 ```bash
 tail -n 50 "$DEMO_ROOT/out/visible-blender-mcp.log"
 grep -q "BLENDER_MCP_READY" "$DEMO_ROOT/out/visible-blender-mcp.log"
+python3 "$GUIDE_REPO/scripts/verify_visible_blender_ovrtx.py" --wait 120
 ```
 
 ## B. Start Local Ultra with vLLM
@@ -396,7 +445,15 @@ Install NemoClaw for Hermes.
 
 ```bash
 export NEMOCLAW_AGENT=hermes
-curl -fsSL https://www.nvidia.com/nemoclaw.sh | bash
+export NEMOCLAW_SANDBOX_NAME="${NEMOCLAW_SANDBOX_NAME:-ov-blender-hermes}"
+export NEMOCLAW_GATEWAY_PORT="${NEMOCLAW_GATEWAY_PORT:-18081}"
+export NEMOCLAW_PROVIDER=vllm
+export NEMOCLAW_VLLM_LOCAL_TOKEN="${NEMOCLAW_VLLM_LOCAL_TOKEN:-none_needed}"
+export NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1
+unset NEMOCLAW_VLLM_MODEL
+
+curl -fsSL https://www.nvidia.com/nemoclaw.sh | \
+  NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1 bash
 export PATH="$HOME/.local/bin:$PATH"
 
 nemohermes --version
@@ -422,8 +479,20 @@ export NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1
 export NEMOCLAW_VLLM_LOCAL_TOKEN="${NEMOCLAW_VLLM_LOCAL_TOKEN:-none_needed}"
 export NEMOCLAW_PROVIDER=vllm
 unset NEMOCLAW_VLLM_MODEL
+```
 
-nemohermes onboard \
+For clean reruns only, reset stale sandbox state before onboarding:
+
+```bash
+nemohermes "$NEMOCLAW_SANDBOX_NAME" destroy --yes --force --cleanup-gateway || true
+rm -f "$HOME/.nemoclaw/sandboxes.json"
+rm -rf "$HOME/.nemoclaw/rebuild-backups" "$HOME/.nemoclaw/backups"
+```
+
+Onboard Hermes:
+
+```bash
+nemohermes onboard --fresh \
   --non-interactive \
   --agent hermes \
   --name "$NEMOCLAW_SANDBOX_NAME" \
@@ -437,6 +506,33 @@ nemohermes "$NEMOCLAW_SANDBOX_NAME" status
 `NEMOCLAW_PROVIDER=vllm` selects the running local vLLM server in unattended
 mode. Do not set `NEMOCLAW_VLLM_MODEL` for this externally started vLLM server;
 that variable is reserved for NemoClaw's managed-vLLM install path.
+
+If OpenShell cannot reach Docker immediately after adding the user to the
+`docker` group, log out and back in, or reboot. For short-lived validation only,
+this grants the current user direct access to the current Docker socket until
+Docker recreates it:
+
+```bash
+sudo apt-get install -y acl
+sudo setfacl -m u:"$USER":rw /var/run/docker.sock
+```
+
+On machines that already had OpenShell installed, verify the gateway version
+after onboarding:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+type -a openshell openshell-gateway
+openshell --version
+openshell status
+systemctl --user cat openshell-gateway.service
+```
+
+If the user service is hardcoded to `/usr/bin/openshell-gateway` while NemoClaw
+installed a different supported gateway under `~/.local/bin`, recreate or
+override the user service so the gateway version matches the NemoClaw install.
+Do this only as troubleshooting for pre-existing host drift, not as the normal
+install path.
 
 Install the public Blender/OV skills from the checked-out `main` branch into
 Hermes:
@@ -456,6 +552,14 @@ export OV_REPO_SANDBOX="${OV_REPO_SANDBOX:-/sandbox/ov-blender-example-internal}
   "$NEMOCLAW_SANDBOX_NAME" \
   "$OV_REPO" \
   "$OV_REPO_SANDBOX"
+```
+
+If Hermes does not see newly installed skills after this step, restart the
+sandbox gateway once and retry the prompt:
+
+```bash
+nemohermes "$NEMOCLAW_SANDBOX_NAME" gateway restart --quiet || \
+  nemohermes "$NEMOCLAW_SANDBOX_NAME" gateway restart
 ```
 
 Allow the sandbox to reach the host Blender MCP proxy:
@@ -511,13 +615,14 @@ section A. Set the visible scene to the OVRTX render engine through MCP instead
 of clicking Blender UI:
 
 ```bash
-nemohermes "$NEMOCLAW_SANDBOX_NAME" agent \
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 600 -- hermes -z \
   "Use the configured Blender MCP server. Run Python in Blender to set bpy.context.scene.render.engine = 'OVRTX_EXAMPLE' and report the current render engine."
 ```
 
-Hermes prompt: first run the Blender control smoke test from
-`prompts/demo-prompts.md`. This should make a harmless visible change in the
-already-open Blender desktop.
+First run the Blender control smoke test from `prompts/demo-prompts.md`. For
+the dashboard, paste the prompt as written. For scriptable `hermes -z` runs,
+keep the prompt on one shell argument; OpenShell rejects command arguments that
+contain literal newlines.
 
 Then render the splash scene. Replace placeholders before sending:
 

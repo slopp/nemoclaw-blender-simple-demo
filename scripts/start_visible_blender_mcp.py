@@ -48,7 +48,7 @@ def main() -> None:
     scene.blendermcp_port = port
 
     current = getattr(bpy.types, "blendermcp_server", None)
-    if current and (getattr(current, "port", port) != port or getattr(current, "host", host) != host):
+    if current and not _server_matches(current, host, port):
         current.stop()
         bpy.types.blendermcp_server = None
         current = None
@@ -65,6 +65,17 @@ def main() -> None:
         raise SystemExit(f"Blender MCP server did not start on {host}:{port}")
 
     print(f"BLENDER_MCP_READY host={host} port={port}", flush=True)
+
+
+def _server_matches(server: object, host: str, port: int) -> bool:
+    server_port = getattr(server, "port", port)
+    server_host = getattr(server, "host", host)
+    return server_port == port and _same_loopback_host(str(server_host), host)
+
+
+def _same_loopback_host(left: str, right: str) -> bool:
+    loopback = {"localhost", "127.0.0.1", "::1"}
+    return left == right or (left in loopback and right in loopback)
 
 
 if __name__ == "__main__":

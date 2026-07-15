@@ -114,22 +114,7 @@ nemohermes "$SANDBOX" exec --timeout 30 -- sh -lc "rm -rf $SANDBOX_DEST && mkdir
 echo "uploading $OV_REPO to $SANDBOX:$SANDBOX_DEST"
 nemohermes "$SANDBOX" upload "$stage_dir" "$SANDBOX_DEST"
 
-nemohermes "$SANDBOX" exec --timeout 60 -- sh -lc "
-set -eu
-if [ -d $SANDBOX_DEST/public ]; then
-  :
-elif [ -d $SANDBOX_DEST/$repo_name/public ]; then
-  nested_tmp=${SANDBOX_DEST}.nested.\$\$
-  mv $SANDBOX_DEST/$repo_name \"\$nested_tmp\"
-  rm -rf $SANDBOX_DEST
-  mv \"\$nested_tmp\" $SANDBOX_DEST
-else
-  echo 'public directory was not found after upload' >&2
-  find $SANDBOX_DEST -maxdepth 3 -type d 2>/dev/null | sed -n '1,40p' >&2
-  exit 1
-fi
-test -d $SANDBOX_DEST/public/skills
-find $SANDBOX_DEST -maxdepth 2 -type d | sort | sed -n '1,40p'
-"
+verify_cmd="set -eu; if [ -d $SANDBOX_DEST/public ]; then :; elif [ -d $SANDBOX_DEST/$repo_name/public ]; then nested_tmp=${SANDBOX_DEST}.nested.\$\$; mv $SANDBOX_DEST/$repo_name \"\$nested_tmp\"; rm -rf $SANDBOX_DEST; mv \"\$nested_tmp\" $SANDBOX_DEST; else echo 'public directory was not found after upload' >&2; find $SANDBOX_DEST -maxdepth 3 -type d 2>/dev/null | sed -n '1,40p' >&2; exit 1; fi; test -d $SANDBOX_DEST/public/skills; find $SANDBOX_DEST -maxdepth 2 -type d | sort | sed -n '1,40p'"
+nemohermes "$SANDBOX" exec --timeout 60 -- sh -lc "$verify_cmd"
 
 echo "uploaded ov-blender-example checkout to sandbox path $SANDBOX_DEST"
