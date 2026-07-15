@@ -41,8 +41,8 @@ esac
 version_info="$("$blender" --version 2>&1)"
 version_line="$(printf '%s\n' "$version_info" | sed -n '1p')"
 case "$version_line" in
-  "Blender 5.1.2") ok "$version_line" ;;
-  "Blender 5.1"*) warn "native-source reference uses Blender 5.1.2; found $version_line" ;;
+  "Blender 5.1.0") ok "$version_line" ;;
+  "Blender 5.1"*) warn "validated DGX Station reference uses Blender 5.1.0; found $version_line" ;;
   *) fail "expected Blender 5.1.x; found ${version_line:-no version output}" ;;
 esac
 

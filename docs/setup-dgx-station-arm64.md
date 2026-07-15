@@ -117,31 +117,20 @@ git -C "$OV_REPO" rev-parse HEAD
 ## 3. Install Blender 5.1
 
 The OV add-on requires Blender 5.1.x. Blender does not publish an official
-Blender ARM64 binary, so the primary setup path builds Blender 5.1.2.
+Linux ARM64 binary. The recommended DGX Station path installs the native
+AArch64 Blender 5.1.0 build validated by this guide.
 
 ### Command
 
 ```bash
-sudo apt-get install -y \
-  build-essential cmake pkg-config ninja-build patchelf yasm autoconf automake \
-  libtool gettext gcc-14 g++-14 libnuma-dev libffi-dev libglib2.0-dev \
-  libcairo2-dev libasound2-dev libdbus-1-dev libdecor-0-dev libdrm-dev \
-  libevdev-dev libice-dev libinput-dev libpciaccess-dev libpixman-1-dev \
-  libpulse-dev libsm-dev libudev-dev libwayland-dev wayland-protocols \
-  libxcb-randr0-dev libxcb-render0-dev libxcursor-dev libxi-dev \
-  libxinerama-dev libxkbcommon-dev libxrandr-dev libxt-dev libxxf86vm-dev
-
 cd "$GUIDE_REPO"
-./scripts/build_blender_5_1_2_arm64.sh
+./scripts/install_blender_5_1.sh
 ```
 
-> **Temporary patch:** the source build applies
-> `patches/blender-5.1.2-arm64-dgx.patch`. Remove this project patch when
-> upstream Blender builds cleanly for the DGX Station ARM64 target.
-
-The latest end-to-end validation reused an existing native ARM64 Blender 5.1.0
-binary and skipped compilation. See Troubleshooting for the temporary binary
-fallback when a source build cannot be completed.
+> **Third-party binary:** this build is published by the lfdevs community
+> project rather than blender.org. It is the recommended path here because it
+> is the version validated end to end on DGX Station ARM64. See Troubleshooting
+> for the optional Blender 5.1.2 source-build path.
 
 ### Validation
 
@@ -155,14 +144,11 @@ file "$(readlink -f "$(command -v blender)")" | grep -E 'ARM aarch64|ARM64'
 
 ### Command
 
-> **Human step: download NoMachine.** Download the current NoMachine Linux
-> ARM64 DEB from the [official NoMachine download page](https://www.nomachine.com/download)
-> into `$HOME/Downloads`. The validated package is NoMachine 9.7.3.
-
-Install it and download the Blender scene:
-
 ```bash
-sudo apt-get install -y "$HOME/Downloads"/nomachine_*_arm64.deb
+curl -fL \
+  https://download.nomachine.com/download/9.7/Arm/nomachine_9.7.3_1_arm64.deb \
+  -o "$HOME/Downloads/nomachine_9.7.3_1_arm64.deb"
+sudo apt-get install -y "$HOME/Downloads/nomachine_9.7.3_1_arm64.deb"
 sudo /usr/NX/bin/nxserver --restart
 
 curl -fL \
@@ -202,21 +188,10 @@ gh release download "$OV_RELEASE_TAG" \
   --dir "$OV_ARTIFACT_DIR"
 
 export OV_ADDON_ZIP="$OV_ARTIFACT_DIR/ov-blender-example-${OV_PLATFORM}.zip"
-export OV_ADDON_ZIP_PATCHED="$OV_ARTIFACT_DIR/ov-blender-example-linux-arm64-blender.zip"
-
-python3 "$GUIDE_REPO/scripts/patch_arm64_extension_zip.py" \
-  "$OV_ADDON_ZIP" "$OV_ADDON_ZIP_PATCHED"
-export OV_ADDON_ZIP="$OV_ADDON_ZIP_PATCHED"
 
 blender --factory-startup --background \
   --command extension install-file -r user_default --enable "$OV_ADDON_ZIP"
 ```
-
-> **Temporary patch:** `patch_arm64_extension_zip.py` adds Blender's
-> `linux-arm64` platform token when an ARM64 release artifact only declares the
-> runtime's `linux-aarch64` spelling. It is harmless when the token is already
-> present and should be removed after all release add-ons publish the Blender
-> platform token.
 
 Materialize the release runtime beside the installed extension:
 
@@ -235,37 +210,10 @@ python3 "$GUIDE_REPO/scripts/materialize_runtime_from_artifacts.py" \
 > the add-on's runtime API. Replace it with the add-on's native local-artifact
 > install workflow when that interface is released for this platform.
 
-Current ARM64 client archives can contain x86-64 `grpcio` or protobuf native
-extensions. Repair them only when the architecture check detects x86-64:
-
-```bash
-export OV_NATIVE_DIR="$OV_RUNTIME_ROOT/native"
-file "$OV_NATIVE_DIR/grpc/_cython"/cygrpc*.so
-file "$OV_NATIVE_DIR/google/_upb"/_message*.so
-
-if file \
-  "$OV_NATIVE_DIR/grpc/_cython"/cygrpc*.so \
-  "$OV_NATIVE_DIR/google/_upb"/_message*.so | grep -q 'x86-64'; then
-  export BLENDER_PY="$(
-    blender --background --factory-startup \
-      --python-expr 'import sys; print("BLENDER_PY=" + sys.executable)' 2>/dev/null |
-      sed -n 's/^BLENDER_PY=//p' | tail -1
-  )"
-  "$BLENDER_PY" -m ensurepip --upgrade
-  "$BLENDER_PY" -m pip install \
-    --target "$OV_NATIVE_DIR" \
-    --upgrade --force-reinstall --only-binary=:all: \
-    grpcio==1.81.1 protobuf
-fi
-```
-
-> **Temporary patch:** reinstalling the ARM64 Python wheels is mandatory only
-> for release archives containing x86-64 native dependencies. Remove this block
-> after the ARM64 client artifact is rebuilt with AArch64 wheels.
-
 Install this project's additive host helper:
 
 ```bash
+export OV_NATIVE_DIR="$OV_RUNTIME_ROOT/native"
 cd "$GUIDE_REPO"
 ./scripts/install_ovphysx_helpers.sh
 ```
@@ -410,8 +358,10 @@ Register the Streamable HTTP endpoint with Hermes:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
-nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 120 -- sh -lc \
-  "printf 'n\ny\n' | hermes mcp add blender --url http://$HOST_IP:9877/mcp"
+nemohermes sandbox upload "$NEMOCLAW_SANDBOX_NAME" \
+  "$GUIDE_REPO/scripts/configure_hermes_blender_mcp.py" /sandbox/
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
+  python /sandbox/configure_hermes_blender_mcp.py "$HOST_IP"
 ```
 
 ### Validation
@@ -431,7 +381,9 @@ proxy is listening. The Hermes MCP entry must show `enabled`.
 > **Human step: launch Blender from the NoMachine desktop.** Connect with the
 > NoMachine client, select the GDM or local physical desktop, log in as the OS
 > user, and open a terminal inside that desktop. Run the command below there.
-> Keep this single Blender window open while using Hermes.
+> Keep this single Blender window open while using Hermes. The launch helper
+> selects the `OVRTX Example` render engine automatically; no Preferences or
+> Render Properties clicks are required.
 
 ### Command
 
@@ -512,30 +464,19 @@ agent, continue with the supplementary
 
 ## Troubleshooting
 
-### Blender ARM64 source build cannot complete
+### Optional Blender 5.1.2 source build
 
-The exact end-to-end validation used the native community Blender 5.1.0 binary.
-Use it only as a temporary fallback when the preferred 5.1.2 source build is
-blocked:
-
-```bash
-BLENDER_ALLOW_COMMUNITY_ARM64=1 "$GUIDE_REPO/scripts/install_blender_5_1.sh"
-```
-
-If only the external OSL dependency fails because its pinned OptiX support is
-older than the host CUDA toolkit, rebuild that dependency without OptiX and
-resume the source build:
+Building Blender 5.1.2 from source is not the recommended demo setup. The
+upstream dependency superbuild compiles LLVM and USD with limited parallelism,
+can take several hours, and currently requires ARM64-specific build and harvest
+fixes. Use this only when validating Blender itself:
 
 ```bash
-export BLENDER_ARM64_WORK_ROOT="${BLENDER_ARM64_WORK_ROOT:-$HOME/work/blender-5.1.2-arm64}"
-export BLENDER_DEPS_BUILD="$BLENDER_ARM64_WORK_ROOT/blender-deps-build"
-
-cmake -S "$BLENDER_DEPS_BUILD/build/osl/src/external_osl" \
-  -B "$BLENDER_DEPS_BUILD/build/osl/src/external_osl-build" \
-  -DOSL_USE_OPTIX=OFF
-cmake --build "$BLENDER_DEPS_BUILD" --target external_osl
 "$GUIDE_REPO/scripts/build_blender_5_1_2_arm64.sh"
 ```
+
+The source-build helper remains experimental and is not part of the validated
+zero-to-demo path.
 
 ### GitHub clone or release download returns 404
 
@@ -574,10 +515,10 @@ systemctl --user is-system-running || true
 docker info >/dev/null && echo docker-ok
 ```
 
-The validated host had `/usr/bin/openshell` `0.0.82` and
-`~/.local/bin/openshell` `0.0.72`. Both could communicate with the active
-standalone `0.0.82` gateway. Use `bash -lc` or explicitly prepend
-`~/.local/bin`; do not assume this mismatch is a protocol failure.
+The clean installation validated by this guide uses OpenShell CLI and gateway
+`0.0.72`. Use `bash -lc` or explicitly prepend `~/.local/bin` so SSH commands
+resolve the NemoClaw-installed CLI. Do not replace or override the gateway when
+the CLI and gateway already agree.
 
 If onboarding stopped after installing the CLI, preserve the partial sandbox
 and resume:
@@ -626,11 +567,13 @@ tail -100 "$DEMO_ROOT/out/visible-blender-mcp.log"
 ```
 
 Restart the detached proxy if port 9877 is absent. If registration occurred
-while the proxy was down, rerun it and answer the overwrite prompt:
+while the proxy was down, rerun the deterministic registration helper:
 
 ```bash
-nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 120 -- sh -lc \
-  "printf 'y\nn\ny\n' | hermes mcp add blender --url http://$HOST_IP:9877/mcp"
+nemohermes sandbox upload "$NEMOCLAW_SANDBOX_NAME" \
+  "$GUIDE_REPO/scripts/configure_hermes_blender_mcp.py" /sandbox/
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
+  python /sandbox/configure_hermes_blender_mcp.py "$HOST_IP"
 ```
 
 ### OVRTX render reports an invalid USD export context
@@ -661,8 +604,11 @@ the scripted smoke render before starting another Hermes request.
 
 ## Validated Component Matrix
 
-The following versions completed scene rendering and three consecutive native
-OVPhysX workflows on the same visible Blender process on July 15, 2026.
+The following versions completed host setup, visible OVRTX scene rendering,
+NemoClaw sandbox setup, skill installation, and Blender MCP registration on
+July 15, 2026. The native OVPhysX workflow was also validated on this platform
+in the preceding installation; repeat it after each clean install using the
+prompt in the validation section above.
 
 | Component | Validated version or identity |
 | --- | --- |
@@ -673,22 +619,19 @@ OVPhysX workflows on the same visible Blender process on July 15, 2026.
 | NVIDIA driver | `595.58.03` |
 | Blender | `5.1.0`, native AArch64, embedded Python 3.13 |
 | OV add-on | `ovrtx Blender Example 0.1.0` |
-| OV source | commit `b1675b588e6d619dfe15f06eeb6282fff8a429ea` |
+| OV source | commit `26d4fccd23dd6f03ee7073075e9791fd75020baa` from `main` |
 | OV runtime platform | `linux-aarch64` |
-| OV runtime manifest SHA-256 | `f8f90d308635a95278f59904a25d67fcf54fc7ef122e84f7e3fb8aa6d5ee0a2c` |
+| OV runtime manifest SHA-256 | `018d07ea701813cd126013b1499f0220bfb89dadbf7a1fd658b7aabda23ec026` |
 | vLLM | `vllm/vllm-openai:v0.22.0` |
 | Model | `nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4`, served as `nemotron-ultra` |
 | Model context | 262,144 tokens |
 | NemoHermes | `0.0.81` |
 | Hermes Agent | `0.18.0` (`2026.7.1`) |
-| Active OpenShell gateway | `0.0.82` |
-| NemoClaw-local OpenShell CLI | `0.0.72` |
+| OpenShell CLI and gateway | `0.0.72` |
 | Docker | `29.2.1` |
 | NoMachine | `9.7.3` |
 | FFmpeg | `6.1.1` |
 
-The Blender 5.1.2 source-build command and project patch are included as the
-preferred fresh ARM64 installation path, but that compilation was intentionally
-skipped during the latest full clean-run validation. The post-install Blender,
-OVRTX, OVPhysX, vLLM, NemoClaw, MCP, rendering, and repeated-physics workflows
-were all exercised end to end.
+The recommended path uses the native community Blender 5.1.0 binary. The
+Blender 5.1.2 source-build helper is retained only for experimental Blender
+build validation and is not part of the zero-to-demo path.

@@ -46,6 +46,14 @@ def main() -> None:
 
     scene = bpy.context.scene
     scene.blendermcp_port = port
+    render_engine = os.environ.get("BLENDER_RENDER_ENGINE", "OVRTX_EXAMPLE")
+    try:
+        scene.render.engine = render_engine
+    except TypeError as exc:
+        raise SystemExit(
+            f"Blender render engine {render_engine!r} is unavailable; "
+            "verify that the OV add-on is installed and enabled"
+        ) from exc
 
     current = getattr(bpy.types, "blendermcp_server", None)
     if current and not _server_matches(current, host, port):
@@ -64,7 +72,10 @@ def main() -> None:
     if not current.running:
         raise SystemExit(f"Blender MCP server did not start on {host}:{port}")
 
-    print(f"BLENDER_MCP_READY host={host} port={port}", flush=True)
+    print(
+        f"BLENDER_MCP_READY host={host} port={port} render_engine={scene.render.engine}",
+        flush=True,
+    )
 
 
 def _server_matches(server: object, host: str, port: int) -> bool:
