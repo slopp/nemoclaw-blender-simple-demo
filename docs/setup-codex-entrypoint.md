@@ -24,6 +24,8 @@ This path is designed for NVIDIA DGX Station running Ubuntu 24.04 ARM64.
 - An OpenAI account with Codex access, or an OpenAI Platform API key.
 - Browser access for the default ChatGPT sign-in flow. Device-code or API-key
   authentication can be used on a headless system.
+- Node.js 22 or newer with `npm`. The primary guide's validated DGX Station
+  environment provides Node.js 22.
 
 ## 1. Restore Project Variables
 
@@ -51,19 +53,18 @@ The sandbox status must report `Hermes Agent: running`.
 
 ### Command
 
-Use the official Linux standalone installer. It installs `codex` under
-`$HOME/.local/bin` by default and supports Linux ARM64.
+Install the official Codex npm package into the user's local prefix. The
+package publishes a native Linux ARM64 dependency and does not require root.
 
 ```bash
-curl -fsSL https://chatgpt.com/codex/install.sh | sh
+npm install --global --prefix "$HOME/.local" @openai/codex
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-For a non-interactive update after the initial installation:
+Use the same command to update Codex later:
 
 ```bash
-curl -fsSL https://chatgpt.com/codex/install.sh | \
-  CODEX_NON_INTERACTIVE=1 sh
+npm install --global --prefix "$HOME/.local" @openai/codex@latest
 ```
 
 ### Validation
@@ -208,6 +209,24 @@ Codex should report its coordination and validation separately from Hermes's
 Blender and OV runtime execution.
 
 ## Troubleshooting
+
+### Standalone installer reports GitHub HTTP 403
+
+The standalone installer at `https://chatgpt.com/codex/install.sh` resolves its
+release through GitHub's unauthenticated API. A DGX Station behind a shared
+public IP can exhaust GitHub's 60-request hourly allowance even when `gh` is
+authenticated, because the installer does not use the `gh` credential.
+
+Use the npm installation command from section 2. To confirm this specific
+failure mode:
+
+```bash
+curl -sS -D /tmp/codex-github-headers \
+  https://api.github.com/repos/openai/codex/releases/latest \
+  -o /tmp/codex-github-response.json
+grep -i '^x-ratelimit-' /tmp/codex-github-headers
+jq -r '.message // .tag_name' /tmp/codex-github-response.json
+```
 
 ### Codex does not list the new skills
 
