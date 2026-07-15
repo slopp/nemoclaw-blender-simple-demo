@@ -8,7 +8,6 @@ Use this when the add-on build does not expose the newer Blender UI field named
 from __future__ import annotations
 
 import argparse
-import inspect
 from pathlib import Path
 import shutil
 import sys
@@ -35,7 +34,11 @@ def main() -> int:
         raise SystemExit(f"missing public/addon package root: {addon_pkg_root}")
     sys.path.insert(0, str(addon_pkg_root))
 
-    from ovrtx_blender_example.runtime_manifest import load_embedded_manifest  # noqa: PLC0415
+    from ovrtx_blender_example.runtime_manifest import (  # noqa: PLC0415
+        RUNTIME_MANIFEST_NAME,
+        load_manifest_pin,
+        parse_manifest_bytes,
+    )
     from ovrtx_blender_example.runtime_materializer import materialize_runtime  # noqa: PLC0415
     from ovrtx_blender_example.runtime_store import verify  # noqa: PLC0415
 
@@ -44,21 +47,25 @@ def main() -> int:
         with zipfile.ZipFile(args.addon_zip, "r") as archive:
             archive.extractall(tmp_path)
         extension_root = _find_extension_root(tmp_path)
-        manifest = load_embedded_manifest(extension_root)
-        kwargs = {}
-        if "source" in inspect.signature(materialize_runtime).parameters:
-            kwargs["source"] = str(args.artifact_dir)
-        else:
+        expected_manifest_sha256 = load_manifest_pin(extension_root)
+        manifest_path = args.artifact_dir / RUNTIME_MANIFEST_NAME
+        if not manifest_path.is_file():
+            raise SystemExit(f"missing release manifest: {manifest_path}")
+        manifest = parse_manifest_bytes(manifest_path.read_bytes())
+        if manifest.sha256 != expected_manifest_sha256:
             raise SystemExit(
-                "The checked-out runtime materializer does not support local artifact sources. "
-                "Rebase the ov-blender-example checkout to a revision with materialize_runtime(..., source=...)."
+                "The release manifest does not match the manifest pinned by the add-on ZIP."
             )
 
         if args.storage_root.exists():
             stale = args.storage_root / "runtimes" / manifest.platform
             shutil.rmtree(stale, ignore_errors=True)
 
-        current = materialize_runtime(manifest, args.storage_root, **kwargs)
+        current = materialize_runtime(
+            expected_manifest_sha256,
+            args.storage_root,
+            source=str(args.artifact_dir.resolve()),
+        )
         status = verify(args.storage_root, manifest)
         print(f"installed: {current}")
         print(f"state: {status.state}")
@@ -69,10 +76,10 @@ def main() -> int:
 
 
 def _find_extension_root(root: Path) -> Path:
-    manifests = [path for path in root.rglob("runtime-bundle-manifest.json") if path.is_file()]
-    if not manifests:
-        raise SystemExit("runtime-bundle-manifest.json not found in add-on ZIP")
-    extension_root = manifests[0].parent
+    pins = [path for path in root.rglob("runtime-bundle-manifest.sha256") if path.is_file()]
+    if not pins:
+        raise SystemExit("runtime-bundle-manifest.sha256 not found in add-on ZIP")
+    extension_root = pins[0].parent
     if not (extension_root / "ovrtx_blender_example").is_dir():
         raise SystemExit(
             "runtime manifest was found, but ovrtx_blender_example package is missing"

@@ -75,10 +75,16 @@ def _usd_export_context(module: Any, scene: Any) -> Any:
 
 '''
 
-OLD_EXPORT_CONTEXT = '''            _temporary_export_identities(scene),
+OLD_EXPORT_CONTEXTS = (
+    '''            _temporary_export_identities(scene),
             module.context.temp_override(scene=scene),
             _temporary_particle_hair_curves(
-'''
+''',
+    '''            _temporary_export_identities(scene),
+            context.temp_override(scene=scene),
+            _temporary_particle_hair_curves(
+''',
+)
 
 NEW_EXPORT_CONTEXT = '''            _temporary_export_identities(scene),
             _usd_export_context(module, scene),
@@ -93,7 +99,7 @@ def main() -> int:
         "--extension-package",
         type=Path,
         default=Path.home()
-        / ".config/blender/5.1/extensions/user_default/ovrtx_blender_example/ovrtx_blender_example",
+        / ".config/blender/5.1/extensions/.user/user_default/ovrtx_blender_example/ovrtx_blender_example",
         help="installed ovrtx_blender_example package directory",
     )
     args = parser.parse_args()
@@ -132,10 +138,14 @@ def patch_file(path: Path) -> str:
         text = text.replace(marker, "\n" + HELPER + marker.lstrip("\n"), 1)
         changed = True
 
-    if OLD_EXPORT_CONTEXT in text:
-        text = text.replace(OLD_EXPORT_CONTEXT, NEW_EXPORT_CONTEXT, 1)
-        changed = True
-    elif NEW_EXPORT_CONTEXT not in text:
+    context_patched = False
+    for old_export_context in OLD_EXPORT_CONTEXTS:
+        if old_export_context in text:
+            text = text.replace(old_export_context, NEW_EXPORT_CONTEXT, 1)
+            changed = True
+            context_patched = True
+            break
+    if not context_patched and NEW_EXPORT_CONTEXT not in text:
         raise RuntimeError("could not find export context call site")
 
     if changed:

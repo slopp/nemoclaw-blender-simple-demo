@@ -44,13 +44,11 @@ scene and starts the MCP socket server in that same process.
   x64 grpc/protobuf native Python dependencies inside the ARM64 zip. The ARM64
   repair command below is a validation-only workaround until the artifact is
   rebuilt with native AArch64 dependencies.
-- Some current add-on builds can fail final renders with either
-  `Operator bpy.ops.wm.usd_export.poll() failed, context is incorrect` or a
-  retained material replay error on
-  `/World/_materials/.../Principled_BSDF.inputs:emissiveColor`. Apply the
-  render-context patch below after installing the extension. Use the scripted
-  OVRTX smoke render below for validation; it clears Blender scene-generation
-  state and current-PID OVRTX worker simulations before rendering.
+- Repeated renders of complex scenes can retain OVRTX scene-generation state.
+  Use the scripted OVRTX smoke render below for validation; it clears the
+  current Blender process's scene-generation and worker state. A conditional
+  context patch is documented only for older add-on builds with the specific
+  `bpy.ops.wm.usd_export.poll()` failure.
 
 ## Start Here
 
@@ -259,6 +257,7 @@ gh api "repos/$OV_GITHUB_REPO/releases/tags/$OV_RELEASE_TAG" \
   --jq '{tag_name, prerelease, published_at, assets: [.assets[].name]}'
 gh release download "$OV_RELEASE_TAG" \
   --repo "$OV_GITHUB_REPO" \
+  --pattern "runtime-bundle-manifest.json" \
   --pattern "ov-blender-example-${OV_PLATFORM}.zip" \
   --pattern "ovrtx-*-${OV_PLATFORM}.zip" \
   --pattern "ovphysx-*-${OV_PLATFORM}.zip" \
@@ -283,17 +282,6 @@ does not start the visible desktop Blender session.
 ```bash
 blender --factory-startup --background \
   --command extension install-file -r user_default --enable "$OV_ADDON_ZIP"
-```
-
-Apply the temporary OVRTX final-render context patch. This patches the installed
-extension package and, when present, the cloned source checkout. If the released
-artifact already contains the fix, the command reports `already patched`.
-
-```bash
-python3 "$GUIDE_REPO/scripts/patch_ovrtx_render_context.py" \
-  --repo "$OV_REPO" \
-  --extension-package "$HOME/.config/blender/5.1/extensions/user_default/ovrtx_blender_example/ovrtx_blender_example"
-
 ```
 
 Install the native runtime bundle from the release artifacts. Use this
@@ -376,12 +364,19 @@ from the `blender-mcp` package.
 Start the host HTTP/SSE proxy:
 
 ```bash
-uvx mcp-proxy --host 0.0.0.0 --port 9877 uvx blender-mcp \
-  > "$DEMO_ROOT/out/blender-mcp-proxy.log" 2>&1 &
+nohup uvx mcp-proxy --host 0.0.0.0 --port 9877 uvx blender-mcp \
+  > "$DEMO_ROOT/out/blender-mcp-proxy.log" 2>&1 </dev/null &
 echo $! > "$DEMO_ROOT/out/blender-mcp-proxy.pid"
 
-curl -fsS --max-time 3 http://127.0.0.1:9877/sse >/dev/null || true
+sleep 5
+kill -0 "$(cat "$DEMO_ROOT/out/blender-mcp-proxy.pid")"
+curl -sS -o /dev/null -w '%{http_code}\n' --max-time 5 \
+  http://127.0.0.1:9877/mcp
 ```
+
+An unauthenticated `GET /mcp` normally reports HTTP `406`; that confirms the
+detached proxy is listening. `nohup` is required when this command is run over
+SSH so the proxy survives after that shell exits.
 
 **Human desktop checkpoint: start the one visible Blender session.** Connect
 with the NoMachine client, choose the GDM/local physical desktop, log in as the
@@ -428,6 +423,16 @@ The smoke render intentionally resets OVRTX scene-generation state before it
 renders. On the current ARM64 validation setup, repeated manual UI renders can
 still hit retained-material replay errors in the splash scene. Prefer this
 scripted render path, or restart Blender before a one-off manual render test.
+
+If the smoke render fails specifically with
+`bpy.ops.wm.usd_export.poll() failed, context is incorrect`, apply the temporary
+render-context workaround to the installed extension, restart Blender, and
+rerun the smoke test. Do not patch the upstream checkout.
+
+```bash
+python3 "$GUIDE_REPO/scripts/patch_ovrtx_render_context.py" \
+  --extension-package "$HOME/.config/blender/5.1/extensions/.user/user_default/ovrtx_blender_example/ovrtx_blender_example"
+```
 
 ## B. Start Local Ultra with vLLM
 
@@ -480,7 +485,24 @@ docker rm -f nemotron-ultra-vllm
 
 ## C. NemoClaw, OpenShell, and Hermes
 
-Install NemoClaw for Hermes.
+Install and onboard NemoClaw for Hermes. The stock DGX Station installer runs
+onboarding as part of installation, so the local vLLM endpoint from section B
+must already be healthy. Do not run a second fresh onboarding after this
+command succeeds.
+
+For a deliberate clean rerun, reset an existing installation first; skip this
+block on a new machine:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+if command -v nemohermes >/dev/null 2>&1; then
+  nemohermes "${NEMOCLAW_SANDBOX_NAME:-ov-blender-hermes}" destroy \
+    --yes --force --cleanup-gateway || true
+  nemohermes uninstall --yes --destroy-user-data || true
+fi
+rm -f "$HOME/.nemoclaw/sandboxes.json"
+rm -rf "$HOME/.nemoclaw/rebuild-backups" "$HOME/.nemoclaw/backups"
+```
 
 ```bash
 export NEMOCLAW_AGENT=hermes
@@ -497,6 +519,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 nemohermes --version
 openshell --version
+nemohermes "$NEMOCLAW_SANDBOX_NAME" status
 ```
 
 If `nemohermes` is not found in a non-interactive SSH command, run the command
@@ -506,37 +529,16 @@ from a login shell or export the same PATH first:
 export PATH="$HOME/.local/bin:$PATH"
 ```
 
-Create the Hermes sandbox, then point it at the running local vLLM server. If
-you are validating beside an existing NemoClaw sandbox on the same host, set a
-separate gateway port before onboarding and keep that environment variable on
-every later `nemohermes` command:
+If you are validating beside an existing NemoClaw sandbox on the same host, set
+a separate gateway port before running the installer and keep that environment
+variable on every later `nemohermes` command.
+
+If the installer completed the CLI install but interrupted during onboarding,
+resume it without destroying the partial sandbox:
 
 ```bash
-export NEMOCLAW_SANDBOX_NAME="${NEMOCLAW_SANDBOX_NAME:-ov-blender-hermes}"
-export NEMOCLAW_GATEWAY_PORT="${NEMOCLAW_GATEWAY_PORT:-18081}"
-export NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1
-export NEMOCLAW_VLLM_LOCAL_TOKEN="${NEMOCLAW_VLLM_LOCAL_TOKEN:-none_needed}"
-export NEMOCLAW_PROVIDER=vllm
-unset NEMOCLAW_VLLM_MODEL
-```
-
-For clean reruns only, reset stale sandbox state before onboarding:
-
-```bash
-nemohermes "$NEMOCLAW_SANDBOX_NAME" destroy --yes --force --cleanup-gateway || true
-rm -f "$HOME/.nemoclaw/sandboxes.json"
-rm -rf "$HOME/.nemoclaw/rebuild-backups" "$HOME/.nemoclaw/backups"
-```
-
-Onboard Hermes:
-
-```bash
-nemohermes onboard --fresh \
+nemohermes onboard --resume \
   --non-interactive \
-  --agent hermes \
-  --name "$NEMOCLAW_SANDBOX_NAME" \
-  --sandbox-gpu \
-  --no-ollama-autostart \
   --yes \
   --yes-i-accept-third-party-software
 nemohermes "$NEMOCLAW_SANDBOX_NAME" status
@@ -556,22 +558,45 @@ sudo apt-get install -y acl
 sudo setfacl -m u:"$USER":rw /var/run/docker.sock
 ```
 
-On machines that already had OpenShell installed, verify the gateway version
-after onboarding:
+If onboarding reports a gateway health timeout even though the user-service
+journal shows successful health requests, check for a CLI/service version
+mismatch:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 type -a openshell openshell-gateway
 openshell --version
-openshell status
+"$HOME/.local/bin/openshell-gateway" --version
+"/usr/bin/openshell-gateway" --version 2>/dev/null || true
 systemctl --user cat openshell-gateway.service
 ```
 
-If the user service is hardcoded to `/usr/bin/openshell-gateway` while NemoClaw
-installed a different supported gateway under `~/.local/bin`, recreate or
-override the user service so the gateway version matches the NemoClaw install.
-Do this only as troubleshooting for pre-existing host drift, not as the normal
-install path.
+The clean DGX Station validation found a system OpenShell `0.0.82` service and
+a NemoClaw-local OpenShell `0.0.72` CLI. If the service is hardcoded to
+`/usr/bin/openshell-gateway` and those versions differ, align the service with
+the NemoClaw-local gateway, then resume onboarding:
+
+```bash
+mkdir -p "$HOME/.config/systemd/user/openshell-gateway.service.d"
+cat > "$HOME/.config/systemd/user/openshell-gateway.service.d/override.conf" <<'EOF'
+[Service]
+ExecStartPre=
+ExecStart=
+ExecStartPre=%h/.local/bin/openshell-gateway generate-certs --output-dir ${OPENSHELL_LOCAL_TLS_DIR} --server-san host.openshell.internal
+ExecStart=%h/.local/bin/openshell-gateway
+EOF
+
+systemctl --user daemon-reload
+systemctl --user restart openshell-gateway.service
+export PATH="$HOME/.local/bin:$PATH"
+openshell status
+
+nemohermes onboard --resume --non-interactive \
+  --yes --yes-i-accept-third-party-software
+```
+
+Use this only when the two installed versions actually differ. A matching
+fresh OpenShell install does not need a service override.
 
 Install the public Blender/OV skills from the checked-out `main` branch into
 Hermes:
@@ -624,6 +649,10 @@ Validate the Hermes-native MCP entry from inside the sandbox:
 ```bash
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- hermes mcp list
 ```
+
+The entry must show `enabled`. If registration was attempted while the proxy
+was down, rerun the command with `printf 'y\nn\ny\n'` to answer the additional
+overwrite prompt.
 
 **Human checkpoint: open the Hermes dashboard.** This is the human UI for
 sending prompts to Hermes:
