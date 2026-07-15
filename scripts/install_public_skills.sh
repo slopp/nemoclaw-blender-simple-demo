@@ -4,6 +4,7 @@ set -euo pipefail
 SANDBOX="${1:-${NEMOCLAW_SANDBOX_NAME:-ov-blender-hermes}}"
 OV_REPO="${2:-${OV_REPO:-$HOME/work/ov-blender-example-internal}}"
 OV_SKILLS_REF="${OV_SKILLS_REF:-current}"
+GUIDE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
   cat <<'USAGE'
@@ -52,4 +53,12 @@ for skill_dir in public/skills/*; do
   fi
 done
 
-echo "installed $count skills into sandbox $SANDBOX"
+guide_count=0
+for skill_dir in "$GUIDE_ROOT"/skills/*; do
+  if [ -f "$skill_dir/SKILL.md" ]; then
+    nemohermes "$SANDBOX" skill install "$skill_dir"
+    guide_count=$((guide_count + 1))
+  fi
+done
+
+echo "installed $count public skills and $guide_count guide-specific skills into sandbox $SANDBOX"

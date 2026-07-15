@@ -10,6 +10,7 @@ The target outcome is:
 - OVRTX/OVPhysX runtime files are installed for the Blender add-on.
 - A NemoClaw Hermes sandbox is running through OpenShell.
 - Hermes has the public Blender/OV skills installed.
+- Hermes has the guide's split host/sandbox OVPhysX boundary skill installed.
 - Hermes can reach a host-side Blender MCP proxy through an explicit policy.
 - You can ask Hermes to load the Blender 2.81 splash scene, render a PNG, and
   run the native OVPhysX stair-drop validation plus GIF capture.
@@ -50,6 +51,9 @@ scene and starts the MCP socket server in that same process.
   render-context patch below after installing the extension. Use the scripted
   OVRTX smoke render below for validation; it clears Blender scene-generation
   state and current-PID OVRTX worker simulations before rendering.
+- Current `main` calls `shutil.which()` in `run_ovphysx_drop_probe.py` without
+  importing `shutil`. Apply the idempotent probe patch below until upstream
+  includes the missing import.
 
 ## Start Here
 
@@ -293,6 +297,9 @@ artifact already contains the fix, the command reports `already patched`.
 python3 "$GUIDE_REPO/scripts/patch_ovrtx_render_context.py" \
   --repo "$OV_REPO" \
   --extension-package "$HOME/.config/blender/5.1/extensions/user_default/ovrtx_blender_example/ovrtx_blender_example"
+
+python3 "$GUIDE_REPO/scripts/patch_ovphysx_probe_shutil.py" \
+  --repo "$OV_REPO"
 ```
 
 Install the native runtime bundle from the release artifacts. Use this
@@ -572,6 +579,16 @@ Upload the checked-out repo into the sandbox. This is separate from skill
 installation: Hermes needs the repo source, public tests, fixtures, and helper
 files when a prompt asks it to run the real OVPhysX validation.
 
+Prepare fixture data on the host first. The stair-drop USDA is tracked in Git,
+but its ambientCG CC0 textures are generated fixture data and are not committed.
+
+```bash
+(
+  cd "$OV_REPO/public"
+  python3 tests/fixtures/demo_stair_drop_1280x720/prepare.py
+)
+```
+
 ```bash
 export OV_REPO_SANDBOX="${OV_REPO_SANDBOX:-/sandbox/ov-blender-example-internal}"
 ./scripts/upload_ov_repo_to_sandbox.sh \
@@ -588,7 +605,9 @@ nemohermes "$NEMOCLAW_SANDBOX_NAME" gateway restart --quiet || \
   nemohermes "$NEMOCLAW_SANDBOX_NAME" gateway restart
 ```
 
-Allow the sandbox to reach the host Blender MCP proxy:
+Allow the sandbox to reach the host Blender MCP proxy and the two read-only
+ambientCG endpoints used by fixture preparation. ambientCG redirects archive
+downloads to `acg-download.struffelproductions.com`, so both hosts are required.
 
 ```bash
 export HOST_IP="$(hostname -I | awk '{print $1}')"
@@ -599,7 +618,13 @@ sed "s/HOST_IP_PLACEHOLDER/$HOST_IP/g" \
 nemohermes "$NEMOCLAW_SANDBOX_NAME" policy-add \
   --from-file "$DEMO_ROOT/blender-mcp-host.yaml" \
   --yes
+
+nemohermes "$NEMOCLAW_SANDBOX_NAME" policy-add \
+  --from-file "$GUIDE_REPO/policies/ambientcg-fixtures.yaml" \
+  --yes
 ```
+
+These are live sandbox policy updates. Do not restart the OpenShell gateway.
 
 Register the local Blender MCP proxy with Hermes. Use the Streamable HTTP
 endpoint at `/mcp`, not the legacy SSE endpoint at `/sse`; Hermes probes the
@@ -656,10 +681,14 @@ Then render the splash scene. Replace placeholders before sending:
 SCENE_PATH="$DEMO_ROOT/scenes/thejunkshopsplashscreen.blend"
 OUTPUT_DIR="$DEMO_ROOT/out"
 OV_REPO_SANDBOX="${OV_REPO_SANDBOX:-/sandbox/ov-blender-example-internal}"
+OV_REPO_HOST="$OV_REPO"
+OV_RUNTIME_ROOT="$OV_EXTENSION_ROOT/runtimes/$OV_PLATFORM/current"
 sed \
   -e "s|SCENE_PATH|$SCENE_PATH|g" \
   -e "s|OUTPUT_DIR|$OUTPUT_DIR|g" \
   -e "s|OV_REPO_SANDBOX|$OV_REPO_SANDBOX|g" \
+  -e "s|OV_REPO_HOST|$OV_REPO_HOST|g" \
+  -e "s|OV_RUNTIME_ROOT|$OV_RUNTIME_ROOT|g" \
   "$GUIDE_REPO/prompts/demo-prompts.md"
 ```
 
