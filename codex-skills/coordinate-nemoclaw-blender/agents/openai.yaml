@@ -1,4 +1,4 @@
 interface:
-  display_name: "Coach NemoClaw Blender"
-  short_description: "Coach Hermes through Blender and OV tasks"
-  default_prompt: "Coach NemoClaw Hermes through this Blender or Omniverse task in measurable milestones, transfer files across the sandbox boundary when needed, and validate the final host artifacts."
+  display_name: "Coordinate NemoClaw Blender"
+  short_description: "Legacy alias for Hermes coaching"
+  default_prompt: "Use the coach-nemoclaw-hermes workflow to coordinate this Blender or Omniverse task."

@@ -35,14 +35,12 @@ a GB300 for local inference, and an RTX PRO 6000 Blackwell GPU for OVRTX.
 
 ## Example
 
-Send this prompt to Hermes:
+Send this prompt directly to Hermes:
 
 ```text
-Use ovphysx-host-runtime-boundary. Run the configured native OVPhysX stair-drop
-demo: prepare and preview the starting scene, simulate it with authoritative
-pose sampling, replay those poses in visible Blender, and create a GIF. Report
-the native simulation status and host artifact paths. Do not substitute Blender
-physics or generated motion.
+Run the configured native OVPhysX stair-drop demo. Create a GIF of the blocks
+falling down the stairs and report the native simulation status and host GIF
+path.
 ```
 
 Hermes invokes the host helper through Blender MCP, runs native OVPhysX, reads
@@ -61,25 +59,28 @@ sample_count: 25
 
 ## Entry Points
 
-Use Hermes directly for a focused task:
+Test NemoClaw directly with a focused task:
 
 ```bash
 nemohermes ov-blender-hermes exec --timeout 1200 -- \
-  hermes chat -Q --max-turns 15 -q \
-  "Render the current scene with OVRTX and report the host output path."
+  hermes chat -Q --max-turns 30 -q \
+  "Render the current scene as a beauty shot with OVRTX. Preserve the scene and report the host PNG path."
 ```
 
-Or start Codex and ask it to delegate:
+Or ask Codex to coach Hermes through an example task:
 
 ```text
-Use $coordinate-nemoclaw-blender. Ask Hermes to render the current scene with
-OVRTX, validate the result, and report the host output path.
+Use $coach-nemoclaw-hermes. Coach Hermes through this task: render the current
+Blender scene as an OVRTX beauty shot. Delegate the Blender and OVRTX work to
+Hermes, avoid overlapping Hermes runs, allow it enough time to finish, and
+verify the resulting host PNG. Do not control Blender directly unless I
+authorize fallback execution.
 ```
 
 The [primary DGX Station setup guide](docs/setup-dgx-station-arm64.md) installs
 the NemoClaw-first path. After that works, the
 [supplementary Codex setup guide](docs/setup-codex-entrypoint.md) installs Codex
-CLI, the coordinator skill, and the upstream OV add-on skills for Codex.
+CLI, the Hermes coaching skill, and the upstream OV add-on skills for Codex.
 
 ## Architecture
 
@@ -106,8 +107,9 @@ The OpenShell sandbox contains Hermes and its skills. Blender, the OV add-on,
 native runtime libraries, fixture data, and outputs remain on the host. The
 policy permits Hermes to reach only the host Blender MCP proxy needed by this
 workflow. In the Codex path, Codex invokes Hermes with `hermes chat -q` through
-`nemohermes ... exec` or `openshell sandbox exec`; it does not bypass the
-sandbox boundary to operate Blender itself.
+`nemohermes ... exec` or `openshell sandbox exec`. By default it does not bypass
+Hermes to operate Blender directly; the coaching skill requires explicit user
+authorization for fallback execution.
 
 ## Prerequisites
 
@@ -136,7 +138,7 @@ exact tested component matrix.
 | [`docs/setup-dgx-station-arm64.md`](docs/setup-dgx-station-arm64.md) | End-to-end installation and validation guide |
 | [`docs/setup-codex-entrypoint.md`](docs/setup-codex-entrypoint.md) | Optional Codex CLI entry-point setup after the primary guide |
 | [`skills/`](skills/) | Additive Hermes skills for the host/sandbox OV boundary |
-| [`codex-skills/`](codex-skills/) | Codex coordination skill for delegating OV work to Hermes |
+| [`codex-skills/`](codex-skills/) | Codex coaching skills for delegating OV work to Hermes |
 | [`policies/`](policies/) | OpenShell network policies for Blender MCP and optional fixture access |
 | [`prompts/`](prompts/) | Render and physics prompts for CLI or dashboard use |
 | [`scripts/`](scripts/) | Blender install, OV runtime materialization, vLLM launch, MCP verification, and OVPhysX host helpers |
@@ -148,8 +150,8 @@ exact tested component matrix.
 This repository extends the upstream OV Blender example additively. It does not
 fork or replace OVRTX, OVPhysX, their Blender add-on, or the public OV skills.
 The local additions are limited to installation orchestration, the explicit
-OpenShell policy, a small host runtime boundary skill, and generic helpers for
-native pose sampling and Blender replay.
+OpenShell policy, a small host runtime boundary skill, a Codex-to-Hermes
+coaching skill, and generic helpers for native pose sampling and Blender replay.
 
 Temporary compatibility patches are identified in the setup guide so they can
 be removed as ARM64 support lands upstream.

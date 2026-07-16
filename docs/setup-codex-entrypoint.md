@@ -11,9 +11,9 @@ This path is designed for NVIDIA DGX Station running Ubuntu 24.04 ARM64.
 ## Process Summary
 
 1. Install and authenticate Codex CLI.
-2. Link the Codex coordinator skill and upstream OV add-on skills.
+2. Link the Codex Hermes-coaching skills and upstream OV add-on skills.
 3. Validate direct Hermes execution through OpenShell.
-4. Start Codex and ask it to delegate a Blender or OVPhysX task to Hermes.
+4. Start Codex and ask it to coach Hermes through a Blender or OVPhysX task.
 
 ## Prerequisites
 
@@ -99,9 +99,9 @@ codex login status
 ## 4. Install the Codex and OV Skills
 
 The installer creates symlinks in `$HOME/.agents/skills`. It links this
-project's coordinator skill and every `SKILL.md` directory under the checked-out
-upstream `public/skills` tree. The links keep Codex on the same OV skill source
-as Hermes and automatically follow later `git pull` updates.
+project's Hermes-coaching skills and every `SKILL.md` directory under the
+checked-out upstream `public/skills` tree. The links keep Codex on the same OV
+skill source as Hermes and automatically follow later `git pull` updates.
 
 ### Command
 
@@ -117,8 +117,9 @@ The installer refuses to overwrite an unrelated skill with the same name.
 ### Validation
 
 ```bash
+test -L "$HOME/.agents/skills/coach-nemoclaw-hermes"
+test -f "$HOME/.agents/skills/coach-nemoclaw-hermes/SKILL.md"
 test -L "$HOME/.agents/skills/coordinate-nemoclaw-blender"
-test -f "$HOME/.agents/skills/coordinate-nemoclaw-blender/SKILL.md"
 git -C "$OV_REPO" rev-parse HEAD
 
 expected="$(find "$OV_REPO/public/skills" -mindepth 2 -maxdepth 2 \
@@ -145,23 +146,23 @@ specialist path from Codex setup.
 openshell sandbox exec \
   --name "$NEMOCLAW_SANDBOX_NAME" \
   --timeout 1200 --no-tty -- \
-  hermes chat -Q --max-turns 15 -q \
-  "Inspect the visible Blender scene and report its scene name, render engine, and OV runtime status. Do not modify the scene."
+  hermes chat -Q --max-turns 30 -q \
+  "Render the current scene as a beauty shot with OVRTX. Preserve the scene and report the host PNG path."
 ```
 
 The validated wrapper form is equivalent:
 
 ```bash
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 1200 -- \
-  hermes chat -Q --max-turns 15 -q \
-  "Inspect the visible Blender scene and report its scene name, render engine, and OV runtime status. Do not modify the scene."
+  hermes chat -Q --max-turns 30 -q \
+  "Render the current scene as a beauty shot with OVRTX. Preserve the scene and report the host PNG path."
 ```
 
 ### Validation
 
-Hermes must reach Blender MCP and report the visible scene and installed OV
-runtime status. Fix this path using the primary guide's troubleshooting section
-before involving Codex.
+Hermes must reach Blender MCP, render through OVRTX, and report a non-empty host
+PNG. Fix this path using the primary guide's troubleshooting section before
+involving Codex.
 
 ## 6. Use Codex as the Entry Point
 
@@ -175,22 +176,28 @@ cd "$HOME/work"
 codex
 ```
 
-Then send:
+Then send this example coaching request:
 
 ```text
-Use $coordinate-nemoclaw-blender. Ask the specialized Hermes agent to inspect
-the visible Blender scene and render it with OVRTX. Validate the resulting host
-PNG and report separately what Codex verified and what Hermes executed.
+Use $coach-nemoclaw-hermes. Coach Hermes through this task: render the current
+Blender scene as an OVRTX beauty shot. Delegate the Blender and OVRTX work to
+Hermes, avoid overlapping Hermes runs, allow it enough time to finish, and
+verify the resulting host PNG. Do not control Blender directly unless I
+authorize fallback execution.
 ```
 
-For native physics:
+For an example native-physics task:
 
 ```text
-Use $coordinate-nemoclaw-blender and the installed OVPhysX skills. Ask Hermes
-to run the configured native OVPhysX stair-drop simulation, replay its
-authoritative poses in visible Blender, and create a GIF. Verify the native
-receipt and host artifacts, then summarize the result.
+Use $coach-nemoclaw-hermes. Coach Hermes through this task: run the configured
+native OVPhysX stair-drop simulation and create a GIF of the blocks falling
+down the stairs. Delegate runtime work to Hermes, prevent overlapping runs,
+allow it enough time to iterate, and verify the native receipt and host GIF.
+Do not control Blender directly unless I authorize fallback execution.
 ```
+
+For another task, replace only the sentence after `Coach Hermes through this
+task:`. Keep the delegation, timing, overlap, validation, and fallback language.
 
 Codex may ask for permission before its first `nemohermes` or `openshell`
 command. Approve only the displayed command and scope needed for the task.
@@ -235,6 +242,7 @@ Confirm the links and start a new Codex process:
 ```bash
 find "$HOME/.agents/skills" -maxdepth 2 -name SKILL.md -print
 readlink -f "$HOME/.agents/skills/coordinate-nemoclaw-blender"
+readlink -f "$HOME/.agents/skills/coach-nemoclaw-hermes"
 ```
 
 ### Codex can run Hermes but Hermes cannot reach Blender

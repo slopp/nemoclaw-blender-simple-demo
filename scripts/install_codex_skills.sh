@@ -7,7 +7,7 @@ CODEX_SKILLS_DIR="${CODEX_SKILLS_DIR:-$HOME/.agents/skills}"
 
 usage() {
   cat <<'USAGE'
-Install the Codex coordinator skill and link the upstream OV add-on skills.
+Install the project Codex coaching skills and link the upstream OV add-on skills.
 
 Usage:
   install_codex_skills.sh [ov-blender-example-checkout]
@@ -54,7 +54,13 @@ link_skill() {
   echo "linked: $skill_name"
 }
 
-link_skill "$GUIDE_ROOT/codex-skills/coordinate-nemoclaw-blender"
+project_count=0
+for skill_dir in "$GUIDE_ROOT"/codex-skills/*; do
+  if [ -f "$skill_dir/SKILL.md" ]; then
+    link_skill "$skill_dir"
+    project_count=$((project_count + 1))
+  fi
+done
 
 count=0
 for skill_dir in "$OV_REPO"/public/skills/*; do
@@ -64,4 +70,4 @@ for skill_dir in "$OV_REPO"/public/skills/*; do
   fi
 done
 
-echo "Codex coordinator installed; linked $count upstream OV skills from $OV_REPO"
+echo "Linked $project_count project coaching skills and $count upstream OV skills from $OV_REPO"

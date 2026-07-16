@@ -422,16 +422,26 @@ preflight `pass`, and a non-empty PNG.
 
 ### Command
 
-Start a new Hermes request with the one-shot physics prompt:
+Start with a simple direct-Hermes rendering test:
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 1200 -- \
-  hermes chat -Q --max-turns 15 -q \
-  "Use ovphysx-host-runtime-boundary. Run the configured native OVPhysX stair-drop demo: prepare and preview the starting scene, simulate it with authoritative pose sampling, replay those poses in visible Blender, and create a GIF. Report the native simulation status and host artifact paths. Do not substitute Blender physics or generated motion."
+  hermes chat -Q --max-turns 30 -q \
+  "Render the current scene as a beauty shot with OVRTX. Preserve the scene, save the PNG to $DEMO_ROOT/out/hermes-beauty-shot.png, and report the host path."
 ```
 
-For render-only and multi-step physics prompts, see
+Then test native physics:
+
+```bash
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 1200 -- \
+  hermes chat -Q --max-turns 30 -q \
+  "Run the configured native OVPhysX stair-drop demo. Create a GIF of the blocks falling down the stairs and report the native simulation status and host GIF path."
+```
+
+These prompts intentionally describe outcomes rather than implementation. The
+installed skills provide the Blender, OVRTX, and OVPhysX procedure. For more
+direct-Hermes examples, see
 [`prompts/demo-prompts.md`](../prompts/demo-prompts.md).
 
 > **Human step: optional Hermes dashboard.** Run
@@ -441,6 +451,7 @@ For render-only and multi-step physics prompts, see
 ### Validation
 
 ```bash
+file "$DEMO_ROOT/out/hermes-beauty-shot.png"
 jq . "$DEMO_ROOT/out/stair-drop/status.json"
 jq . "$DEMO_ROOT/out/stair-drop/replay-status.json"
 file "$DEMO_ROOT/out/stair-drop/starting-scene.png"
