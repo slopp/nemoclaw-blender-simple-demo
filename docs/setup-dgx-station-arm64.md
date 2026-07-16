@@ -43,6 +43,32 @@ Keep the environment variables from the first section in the same shell.
 
 No hosted LLM API key is required. Hermes uses the local vLLM endpoint.
 
+## 0. Run the Read-Only Preflight
+
+Run the preflight before installing or removing anything. It inventories the
+guide's hardware, storage, packages, Docker runtime, credentials, network
+names, ports, existing services, desktop software, and working directories.
+It does not install packages, stop services, delete files, or print credential
+values.
+
+```bash
+cd "$HOME/work/nemoclaw-blender-simple-demo"
+./scripts/preflight_dgx_station_arm64.sh
+```
+
+A fresh host normally reports `RESULT=not-ready` because Blender, NoMachine,
+and other guide-installed components are still absent. Treat every `FAIL` as a
+checklist item to resolve in the numbered section that owns it. Rerun the
+preflight after host preparation and before starting the model download. Use
+`--storage-path PATH` when the model cache and demo workspace intentionally use
+a filesystem other than `$HOME`.
+
+On a post-install rerun, a healthy `nemotron-ultra` endpoint or a complete
+reusable target-model cache satisfies the initial storage and Hugging Face token
+prerequisites. Active demo ports, the model container, and the sandbox remain
+warnings so operators confirm they belong to this setup rather than deleting
+working state.
+
 ## 1. Install Host Packages
 
 ### Command
@@ -171,8 +197,16 @@ Do not start Blender yet. There is one visible Blender launch in section 10.
 ### Command
 
 ```bash
-export OV_RELEASE_TAG="linux-aarch64-dev"
 export OV_PLATFORM="linux-aarch64"
+export OV_RELEASE_TAG="$(
+  gh release list \
+    --repo "$OV_GITHUB_REPO" \
+    --limit 100 \
+    --json tagName,publishedAt \
+    --jq '[.[] | select(.tagName | startswith("linux-aarch64-dev-"))] | sort_by(.publishedAt) | .[-1].tagName'
+)"
+test -n "$OV_RELEASE_TAG"
+printf 'Selected OV release: %s\n' "$OV_RELEASE_TAG"
 
 gh release view "$OV_RELEASE_TAG" \
   --repo "$OV_GITHUB_REPO" \
@@ -383,7 +417,10 @@ proxy is listening. The Hermes MCP entry must show `enabled`.
 > user, and open a terminal inside that desktop. Run the command below there.
 > Keep this single Blender window open while using Hermes. The launch helper
 > selects the `OVRTX Example` render engine automatically; no Preferences or
-> Render Properties clicks are required.
+> Render Properties clicks are required. If the connection is black with only
+> an X-shaped cursor, use
+> [NoMachine connects but the Linux desktop is black](#nomachine-connects-but-the-linux-desktop-is-black)
+> before launching Blender.
 
 ### Command
 
@@ -485,7 +522,15 @@ active account and scopes:
 
 ```bash
 gh auth status
-gh api "repos/$OV_GITHUB_REPO/releases/tags/linux-aarch64-dev" \
+OV_RELEASE_TAG="$(
+  gh release list \
+    --repo "$OV_GITHUB_REPO" \
+    --limit 100 \
+    --json tagName,publishedAt \
+    --jq '[.[] | select(.tagName | startswith("linux-aarch64-dev-"))] | sort_by(.publishedAt) | .[-1].tagName'
+)"
+test -n "$OV_RELEASE_TAG"
+gh release view "$OV_RELEASE_TAG" --repo "$OV_GITHUB_REPO" --json assets \
   --jq '.assets[].name'
 ```
 
@@ -502,6 +547,86 @@ docker info
 Log out of both SSH and the desktop, then log back in. For a short-lived
 diagnostic only, `sudo setfacl -m u:"$USER":rw /var/run/docker.sock` can prove
 that socket access is the blocker.
+
+### NoMachine connects but the Linux desktop is black
+
+A black window with an X-shaped cursor means the NX transport is connected but
+the Linux desktop image is not rendering. NoMachine tracks this as an open v9
+physical-desktop issue on Linux. First use the page peel in the upper-right
+corner of the client window, then select **Display**, **Change settings**,
+**Modify**, and **Disable client-side hardware decoding**. Disconnect and
+reconnect. See NoMachine's
+[client decoding instructions](https://kb.nomachine.com/AR07U01202) and
+[Linux physical-desktop issue](https://kb.nomachine.com/TR03X11742).
+
+If the screen remains black, confirm that the physical display contains only
+the GDM greeter before stopping it. Do not stop GDM when another user has a
+graphical session or unsaved desktop work:
+
+```bash
+who
+loginctl list-sessions --no-legend
+systemctl status gdm.service --no-pager
+```
+
+Disconnect NoMachine, stop the unused greeter, and verify it is inactive:
+
+```bash
+sudo systemctl stop gdm
+systemctl is-active gdm
+```
+
+Reconnect. If NoMachine reports that the local display is unavailable, check
+whether virtual display creation is disabled and whether `nxnode` is disabled:
+
+```bash
+/usr/NX/bin/nxserver --status
+grep -n -E 'CreateDisplay|DisplayOwner' /usr/NX/etc/server.cfg
+```
+
+Back up the server configuration, enable a virtual display owned by the setup
+user, and restart NoMachine. Replace `nvidia` when the OS username differs:
+
+```bash
+if [ ! -e /usr/NX/etc/server.cfg.before-virtual-display ]; then
+  sudo cp /usr/NX/etc/server.cfg \
+    /usr/NX/etc/server.cfg.before-virtual-display
+fi
+
+sudo sed -i \
+  -e 's/^#CreateDisplay 0/CreateDisplay 1/' \
+  -e 's/^#DisplayOwner ""/DisplayOwner "nvidia"/' \
+  /usr/NX/etc/server.cfg
+
+grep -E '^(CreateDisplay|DisplayOwner)' /usr/NX/etc/server.cfg
+sudo /usr/NX/bin/nxserver --restart
+```
+
+Expected configuration is `CreateDisplay 1` and `DisplayOwner "nvidia"`.
+Reconnect and let NoMachine create the virtual GNOME display. This follows
+NoMachine's [headless Linux guidance](https://kb.nomachine.com/AR03P00973).
+
+Open the terminal from inside the NoMachine desktop and confirm it inherited a
+display before launching Blender:
+
+```bash
+test -n "$DISPLAY" && echo "display=$DISPLAY"
+```
+
+Do not launch visible Blender from a separate SSH shell. If the log reports
+`unable to connect to display`, rerun the command in the NoMachine terminal.
+As a diagnostic only, identify the active virtual display with
+`ls /tmp/.X11-unix`; the display number is assigned dynamically and must not be
+hard-coded in the guide.
+
+To restore the original configuration and physical GDM display:
+
+```bash
+sudo cp /usr/NX/etc/server.cfg.before-virtual-display \
+  /usr/NX/etc/server.cfg
+sudo systemctl start gdm
+sudo /usr/NX/bin/nxserver --restart
+```
 
 ### OpenShell differs between login and non-login shells
 
