@@ -291,8 +291,11 @@ if has_command docker; then
     pass "Docker daemon is reachable by $USER"
     if docker info --format '{{json .Runtimes}}' 2>/dev/null | grep -q 'nvidia'; then
       pass "Docker reports the NVIDIA runtime"
+    elif has_command nvidia-ctk && \
+      nvidia-ctk cdi list 2>/dev/null | grep -Fxq 'nvidia.com/gpu=all'; then
+      pass "Docker can use NVIDIA GPUs through the available CDI devices"
     else
-      fail "Docker does not report the NVIDIA runtime"
+      fail "Docker reports neither the NVIDIA runtime nor usable NVIDIA CDI devices"
     fi
   else
     fail "Docker is installed but $USER cannot reach the daemon"
