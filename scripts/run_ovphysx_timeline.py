@@ -71,6 +71,14 @@ def _finite(value: Any) -> bool:
     return True
 
 
+def _resolve_ovphysx_server(runtime_root: Path) -> Path:
+    candidates = (
+        runtime_root / "bin" / "ovphysx-bridge-server",
+        runtime_root / "bin" / "ovphysx_grpc_server",
+    )
+    return next((path for path in candidates if path.is_file()), candidates[0])
+
+
 def _compact_status(output_dir: Path, report: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "status": report["status"],
@@ -85,7 +93,7 @@ def _compact_status(output_dir: Path, report: Mapping[str, Any]) -> dict[str, An
 
 def _run(args: argparse.Namespace) -> dict[str, Any]:
     addon_root = args.ov_repo / "public" / "addon"
-    server = args.runtime_root / "bin" / "ovphysx_grpc_server"
+    server = _resolve_ovphysx_server(args.runtime_root)
     native = args.runtime_root / "native"
     ovphysx_root = args.runtime_root / "runtime" / "ovphysx"
     ovruntime_root = args.runtime_root / "runtime" / "ovruntime"
