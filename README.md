@@ -106,7 +106,10 @@ CLI, the Hermes coaching skill, and the upstream OV add-on skills for Codex.
 The OpenShell sandbox contains Hermes and its skills. Blender, the OV add-on,
 native runtime libraries, fixture data, and outputs remain on the host. The
 policy permits Hermes to reach only the host Blender MCP proxy needed by this
-workflow. In the Codex path, Codex invokes Hermes with `hermes chat -q` through
+workflow. An always-on SOUL block makes this boundary explicit, and a searchable
+copy of the official Blender 5.1 Python API helps Hermes verify version-specific
+properties and operators against the running Blender process before mutation.
+In the Codex path, Codex invokes Hermes with `hermes chat -q` through
 `nemohermes ... exec` or `openshell sandbox exec`. By default it does not bypass
 Hermes to operate Blender directly; the coaching skill requires explicit user
 authorization for fallback execution.
@@ -137,7 +140,8 @@ exact tested component matrix.
 | --- | --- |
 | [`docs/setup-dgx-station-arm64.md`](docs/setup-dgx-station-arm64.md) | End-to-end installation and validation guide |
 | [`docs/setup-codex-entrypoint.md`](docs/setup-codex-entrypoint.md) | Optional Codex CLI entry-point setup after the primary guide |
-| [`skills/`](skills/) | Additive Hermes skills for the host/sandbox OV boundary |
+| [`skills/`](skills/) | Additive Hermes skills for the host boundary and Blender API verification |
+| [`hermes/`](hermes/) | Always-on SOUL guidance for Blender's host/sandbox execution boundary |
 | [`codex-skills/`](codex-skills/) | Codex coaching skills for delegating OV work to Hermes |
 | [`policies/`](policies/) | OpenShell network policies for Blender MCP and optional fixture access |
 | [`prompts/`](prompts/) | Render and physics prompts for CLI or dashboard use |
@@ -150,8 +154,9 @@ exact tested component matrix.
 This repository extends the upstream OV Blender example additively. It does not
 fork or replace OVRTX, OVPhysX, their Blender add-on, or the public OV skills.
 The local additions are limited to installation orchestration, the explicit
-OpenShell policy, a small host runtime boundary skill, a Codex-to-Hermes
-coaching skill, and generic helpers for native pose sampling and Blender replay.
+OpenShell policy, always-on host boundary guidance, version-pinned Blender API
+reference search, a Codex-to-Hermes coaching skill, and generic helpers for
+native pose sampling and Blender replay.
 
 Temporary compatibility patches are identified in the setup guide so they can
 be removed as ARM64 support lands upstream.

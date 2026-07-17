@@ -13,6 +13,11 @@ Use this skill together with `ovphysx-simulation-workflow` and
 
 ## Topology
 
+The always-on Hermes SOUL contains this deployment boundary. This skill adds
+OVPhysX-specific handling, but the same rule applies to every Blender task: use
+Blender MCP for Blender operations and host file access; sandbox terminal and
+file tools cannot see the Blender host filesystem.
+
 - Hermes and the installed public OV skills run inside the OpenShell sandbox.
 - Visible Blender, the installed add-on, `ovphysx_grpc_server`, and the
   `ovphysx_bridge_client` native extension run on the host.
@@ -101,6 +106,10 @@ labels the output `blender-replay`.
 Never use sandbox `read_file`, `terminal`, or `write_file` on `/home/...`
 paths. Never ask Blender to open a `/sandbox/...` path. If the installed helper
 is missing, report that setup blocker instead of recreating it ad hoc.
+
+For Blender Python properties, enum values, operators, and animation APIs, use
+the `blender-python-api-verification` skill and inspect the running API through
+Blender MCP before mutation.
 
 Do not substitute Blender rigid bodies, keyframes, or inferred motion for a
 failed native run. Render or encode a GIF only from authoritative OVPhysX pose
