@@ -42,6 +42,14 @@ def _compact_file(path: Path) -> dict[str, Any]:
     return {"path": str(path), **value}
 
 
+def _resolve_ovphysx_server(runtime_root: Path) -> Path:
+    candidates = (
+        runtime_root / "bin" / "ovphysx-bridge-server",
+        runtime_root / "bin" / "ovphysx_grpc_server",
+    )
+    return next((path for path in candidates if path.is_file()), candidates[0])
+
+
 def _preflight(settings: Mapping[str, Any]) -> dict[str, Any]:
     paths = {
         "ov_repo": Path(settings["ov_repo"]),
@@ -52,9 +60,10 @@ def _preflight(settings: Mapping[str, Any]) -> dict[str, Any]:
     }
     checks = {name: path.exists() for name, path in paths.items()}
     runtime_root = paths["runtime_root"]
+    ovphysx_server = _resolve_ovphysx_server(runtime_root)
     checks.update(
         {
-            "ovphysx_server": (runtime_root / "bin" / "ovphysx_grpc_server").is_file(),
+            "ovphysx_server": ovphysx_server.is_file(),
             "native_client_dir": (runtime_root / "native").is_dir(),
         }
     )
@@ -62,7 +71,7 @@ def _preflight(settings: Mapping[str, Any]) -> dict[str, Any]:
         "installed_addon_package",
         "bl_ext.user_default.ovrtx_blender_example.ovrtx_blender_example",
     )
-    diagnostics: dict[str, Any] = {}
+    diagnostics: dict[str, Any] = {"ovphysx_server": str(ovphysx_server)}
     try:
         bundled = __import__(f"{addon}.bundled_runtime", fromlist=["defaults"])
         services = __import__(f"{addon}.runtime_services", fromlist=["owner"])
