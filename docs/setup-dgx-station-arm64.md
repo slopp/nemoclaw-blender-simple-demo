@@ -305,14 +305,16 @@ curl -fsS http://127.0.0.1:8000/v1/models >/dev/null
 
 The sandbox status must report `Hermes Agent: running`.
 
-## 8. Install Specialized Skills and Network Policy
+## 8. Install Agent Context, Specialized Skills, and Network Policy
 
 ### Command
 
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 cd "$GUIDE_REPO"
+./scripts/install_hermes_context.sh "$NEMOCLAW_SANDBOX_NAME"
 ./scripts/install_public_skills.sh "$NEMOCLAW_SANDBOX_NAME" "$OV_REPO"
+./scripts/install_blender_api_reference.sh "$NEMOCLAW_SANDBOX_NAME"
 
 export HOST_IP="$(hostname -I | awk '{print $1}')"
 sed "s/HOST_IP_PLACEHOLDER/$HOST_IP/g" \
@@ -325,6 +327,9 @@ nemohermes "$NEMOCLAW_SANDBOX_NAME" policy-add \
 
 Skill installation messages may suggest restarting the agent gateway. A new
 Hermes chat session loads the skills; do not restart the OpenShell gateway.
+The API reference command downloads about 92 MB once from Blender's official
+documentation site, caches it on the host, and extracts it inside the sandbox.
+The SOUL installer is idempotent and preserves NemoClaw's existing instructions.
 
 ### Validation
 
@@ -332,6 +337,14 @@ Hermes chat session loads the skills; do not restart the OpenShell gateway.
 nemohermes "$NEMOCLAW_SANDBOX_NAME" status
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
   test -f /sandbox/.hermes/skills/ovphysx-host-runtime-boundary/SKILL.md
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
+  test -f /sandbox/.hermes/skills/blender-python-api-verification/SKILL.md
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
+  grep -q nemoclaw-blender-host-boundary /sandbox/.hermes/SOUL.md
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
+  test -f /sandbox/reference/blender-python-api-5.1/index.html
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
+  test -f /sandbox/reference/blender-python-api-5.1/api-search.sqlite3
 ```
 
 ## 9. Prepare Blender MCP
