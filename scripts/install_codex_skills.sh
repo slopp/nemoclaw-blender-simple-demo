@@ -30,6 +30,16 @@ fi
 
 mkdir -p "$CODEX_SKILLS_DIR"
 
+# Remove only stale links previously created from this upstream skill tree.
+# Project skills and unrelated user-installed skills are left untouched.
+for target in "$CODEX_SKILLS_DIR"/*; do
+  if [ -L "$target" ] && [ ! -e "$target" ]; then
+    case "$(readlink "$target")" in
+      "$OV_REPO"/public/skills/*) rm "$target" ;;
+    esac
+  fi
+done
+
 link_skill() {
   local source_dir="$1"
   local skill_name target

@@ -3,7 +3,7 @@ set -euo pipefail
 
 SANDBOX="${1:-${NEMOCLAW_SANDBOX_NAME:-ov-blender-hermes}}"
 OV_REPO="${2:-${OV_REPO:-$HOME/work/ov-blender-example-internal}}"
-OV_SKILLS_REF="${OV_SKILLS_REF:-current}"
+OV_SKILLS_REF="${OV_SKILLS_REF:-main}"
 GUIDE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
 usage() {
@@ -14,7 +14,8 @@ Usage:
   install_public_skills.sh [sandbox-name] [ov-blender-example-checkout]
 
 Environment:
-  OV_SKILLS_REF=<ref>            Optional git ref to read skills from
+  OV_SKILLS_REF=<ref>            Git ref to read skills from (default: main;
+                                 use current to skip the fetch)
   NEMOCLAW_SANDBOX_NAME         Default sandbox name
   OV_REPO                       Default ov-blender-example checkout
 USAGE
@@ -48,6 +49,10 @@ fi
 count=0
 for skill_dir in public/skills/*; do
   if [ -f "$skill_dir/SKILL.md" ]; then
+    # A clean replacement prevents references or scripts removed upstream from
+    # surviving NemoHermes' otherwise additive skill update.
+    nemohermes "$SANDBOX" skill remove "$(basename "$skill_dir")" \
+      >/dev/null 2>&1 || true
     nemohermes "$SANDBOX" skill install "$skill_dir"
     count=$((count + 1))
   fi

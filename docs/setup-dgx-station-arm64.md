@@ -359,6 +359,11 @@ nemohermes "$NEMOCLAW_SANDBOX_NAME" policy-add \
   --from-file "$DEMO_ROOT/blender-mcp-host.yaml" --yes
 ```
 
+The installer fetches `public/skills` from the latest upstream `main` and
+cleanly replaces each matching Hermes skill directory. Set
+`OV_SKILLS_REF=current` only when intentionally testing the checkout's current
+skill files without fetching upstream.
+
 Skill installation messages may suggest restarting the agent gateway. A new
 Hermes chat session loads the skills; do not restart the OpenShell gateway.
 The API reference command downloads about 92 MB once from Blender's official
