@@ -298,10 +298,17 @@ Stop following logs with `Ctrl-C`; that does not stop the container.
 ```bash
 curl -fsS http://127.0.0.1:8000/v1/models | jq \
   '.data[] | {id, root, max_model_len}'
+curl -fsS http://127.0.0.1:8000/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"nemotron-ultra","messages":[{"role":"user","content":"Return exactly INFERENCE_OK"}],"max_tokens":16}' | \
+  jq -r '.choices[0].message.content'
 docker ps --filter name=nemotron-ultra-vllm
 ```
 
-Expected model ID: `nemotron-ultra`.
+Expected model ID: `nemotron-ultra`; the completion probe must return
+`INFERENCE_OK`. A healthy `/v1/models` response alone is insufficient because
+the model endpoint can be registered while its first generation request still
+fails.
 
 ## 7. Install NemoClaw, OpenShell, and Hermes
 
@@ -322,11 +329,14 @@ unset NEMOCLAW_VLLM_MODEL
 curl -fsSL https://www.nvidia.com/nemoclaw.sh | \
   NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1 bash
 
-export PATH="$HOME/.local/bin:$PATH"
+NODE_BIN="$(dirname "$(bash -lc 'command -v node')")"
+export PATH="$HOME/.local/bin:$NODE_BIN:$PATH"
 ```
 
-Use a login shell or explicitly export `~/.local/bin` for every later
-non-interactive SSH command. Do not add a systemd override during normal setup.
+Use a login shell or explicitly export the same `PATH` and
+`NEMOCLAW_GATEWAY_PORT` for every later non-interactive SSH command. Otherwise
+SSH can resolve a different system OpenShell CLI or select a stale gateway.
+Do not add a systemd override during normal setup.
 
 ### Validation
 
@@ -335,6 +345,9 @@ bash -lc 'command -v nemohermes; nemohermes --version'
 bash -lc 'command -v openshell; openshell --version'
 bash -lc 'nemohermes ov-blender-hermes status'
 curl -fsS http://127.0.0.1:8000/v1/models >/dev/null
+nemohermes ov-blender-hermes exec --timeout 300 -- \
+  hermes chat -Q --max-turns 2 -q \
+  'Return exactly INFERENCE_OK and do not call any tool.'
 ```
 
 The sandbox status must report `Hermes Agent: running`.
@@ -379,12 +392,19 @@ nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
   test -f /sandbox/.hermes/skills/blender-python-api-verification/SKILL.md
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
+  test -f /sandbox/.hermes/skills/blender-host-sandbox-boundary/SKILL.md
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
   grep -q nemoclaw-blender-host-boundary /sandbox/.hermes/SOUL.md
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
   test -f /sandbox/reference/blender-python-api-5.1/index.html
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
   test -f /sandbox/reference/blender-python-api-5.1/api-search.sqlite3
 ```
+
+The API reference command downloads about 92 MB once from Blender's official
+documentation site, caches it on the host, extracts it inside the sandbox, and
+builds a compact SQLite full-text index. It does not give Hermes unrestricted
+web access.
 
 ## 9. Prepare Blender MCP
 
@@ -416,17 +436,52 @@ nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
   python /sandbox/configure_hermes_blender_mcp.py "$HOST_IP"
 ```
 
+Start the bounded workflow MCP proxy and create an isolated Hermes profile for
+scene inventory, USD export, USD inspection, and artifact receipts:
+
+```bash
+"$GUIDE_REPO/scripts/install_blender_workflow_mcp.sh" \
+  "$NEMOCLAW_SANDBOX_NAME" "$HOST_IP"
+```
+
+The `blenderhandoff` profile clones the configured model credentials and
+skills, disables terminal/file/code-execution tools and the mutable skills
+toolset in that profile only, and enables a small typed Blender/Workflow MCP
+set. Its wrapper preloads the read-only host/sandbox boundary skill for every
+chat. This prevents `skill_manage` from becoming an unintended file-write
+escape hatch. The profile does not register the raw Blender MCP because Hermes
+can surface MCP resource and prompt helpers through deferred discovery even
+when ordinary tools are allowlisted. It also disables the cloned API-server
+surface and removes any other inherited MCP servers. The normal Hermes profile
+keeps raw Blender MCP and remains available for OVRTX and OVPhysX demo prompts.
+
+> **Security:** The two `mcp-proxy` listeners do not provide application-layer
+> authentication. Keep ports 9877 and 9878 restricted to the trusted DGX host
+> network and the exact sandbox policy in this repository. Do not expose them
+> through public ingress, and stop the proxies when the demo is no longer in
+> use.
+
 ### Validation
 
 ```bash
 kill -0 "$(cat "$DEMO_ROOT/out/blender-mcp-proxy.pid")"
 curl -sS -o /dev/null -w '%{http_code}\n' --max-time 5 \
   http://127.0.0.1:9877/mcp
+curl -sS -o /dev/null -w '%{http_code}\n' --max-time 5 \
+  http://127.0.0.1:9878/mcp
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- hermes mcp list
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
+  /sandbox/.local/bin/blenderhandoff mcp test blender-workflow
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
+  /sandbox/.local/bin/blenderhandoff tools list
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
+  test -f /sandbox/.hermes/profiles/blenderhandoff/skills/blender-host-sandbox-boundary/SKILL.md
 ```
 
-An unauthenticated `GET /mcp` normally returns HTTP `406`, which confirms the
-proxy is listening. The Hermes MCP entry must show `enabled`.
+An unauthenticated `GET /mcp` normally returns HTTP `406`, which confirms each
+proxy is listening. The normal Hermes profile keeps raw Blender MCP for
+interactive OVRTX/OVPhysX tasks. The isolated `blenderhandoff` profile must
+list only the five `blender-workflow` tools.
 
 ## 10. Start the Visible Blender Session
 
@@ -477,6 +532,16 @@ preflight `pass`, and a non-empty PNG.
 
 ### Command
 
+First verify the bounded host/sandbox route without changing the scene:
+
+```bash
+export HANDOFF_SMOKE="$DEMO_ROOT/out/handoff-smoke"
+export HANDOFF_PROMPT="Use only typed blender-workflow MCP tools. Probe capabilities. Inventory the active scene to $HANDOFF_SMOKE/scene-inventory.json, verify that exact file with artifact_receipts, and return HANDOFF_SMOKE_PASS only if it is present and non-empty with a SHA-256 receipt."
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 600 -- \
+  /sandbox/.local/bin/blenderhandoff chat -Q --max-turns 12 \
+  -q "$HANDOFF_PROMPT"
+```
+
 Start with a simple direct-Hermes rendering test:
 
 ```bash
@@ -507,6 +572,9 @@ direct-Hermes examples, see
 
 ```bash
 file "$DEMO_ROOT/out/hermes-beauty-shot.png"
+jq '{scene_path, object_count, material_count, rigid_body_count}' \
+  "$DEMO_ROOT/out/handoff-smoke/scene-inventory.json"
+sha256sum "$DEMO_ROOT/out/handoff-smoke/scene-inventory.json"
 jq . "$DEMO_ROOT/out/stair-drop/status.json"
 jq . "$DEMO_ROOT/out/stair-drop/replay-status.json"
 file "$DEMO_ROOT/out/stair-drop/starting-scene.png"
@@ -516,6 +584,8 @@ pgrep -af '^blender '
 
 Required evidence:
 
+- The bounded smoke returns `HANDOFF_SMOKE_PASS`; its inventory exists and has
+  a host-measured SHA-256.
 - `native_status` is `pass-real`.
 - `physics_source` is `native-ovphysx-readback`.
 - `render_class` is `blender-replay`.
@@ -669,6 +739,15 @@ systemctl --user is-system-running || true
 docker info >/dev/null && echo docker-ok
 ```
 
+For non-interactive SSH automation, export the selected gateway and rebuild a
+login-equivalent command path explicitly:
+
+```bash
+export NEMOCLAW_GATEWAY_PORT=18081
+NODE_BIN="$(dirname "$(bash -lc 'command -v node')")"
+export PATH="$HOME/.local/bin:$NODE_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+```
+
 The clean installation validated by this guide uses OpenShell CLI and gateway
 `0.0.72`. Use `bash -lc` or explicitly prepend `~/.local/bin` so SSH commands
 resolve the NemoClaw-installed CLI. Do not replace or override the gateway when
@@ -711,12 +790,44 @@ df -h "$HOME/.cache/huggingface"
 Model loading and CUDA graph capture are long-running. Do not restart or remove
 the container while weights are still loading.
 
+Use the launcher in this repository with GB300 alone (`VLLM_GPU_DEVICE=1`,
+tensor parallel size 1, CPU expert offload). Do not combine the RTX rendering
+GPU and GB300 in a heterogeneous tensor-parallel vLLM container. In validation,
+that competing topology consumed both GPUs and failed its first real request in
+FlashInfer even though `/v1/models` was healthy. Stop or rename any competing
+model container before starting `nemotron-ultra-vllm`.
+
+### Blender exits with `Unable to initialize GHOST`
+
+Launch the visible Blender command from a terminal opened inside the active
+NoMachine desktop, not from a Mac SSH terminal. Verify that the desktop shell
+has a non-empty display before launching:
+
+```bash
+echo "$DISPLAY"
+loginctl list-sessions
+```
+
+The display number is session-specific (for example, `:1002` during one QA
+run); do not hard-code it in the guide. An empty or stale SSH `DISPLAY` can
+leave the NoMachine desktop visible while Blender exits immediately.
+
+### A failed run prints an OpenRouter policy hint
+
+The local profile uses `https://inference.local/v1`. Hermes may still attempt
+an optional OpenRouter model-metadata lookup, and an interrupted or failed run
+can print a generic egress-policy hint for that lookup. Before changing policy,
+verify the configured provider/base URL and run the real `INFERENCE_OK`
+completion probe above. Treat the OpenRouter hint as causal only when the
+actual configured model route uses OpenRouter.
+
 ### Blender MCP reports 502 or disabled
 
 ```bash
 pgrep -af '^blender '
-ss -ltnp | grep -E ':(9876|9877)'
+ss -ltnp | grep -E ':(9876|9877|9878)'
 tail -100 "$DEMO_ROOT/out/blender-mcp-proxy.log"
+tail -100 "$DEMO_ROOT/out/blender-workflow-mcp.log"
 tail -100 "$DEMO_ROOT/out/visible-blender-mcp.log"
 ```
 
@@ -729,6 +840,17 @@ nemohermes sandbox upload "$NEMOCLAW_SANDBOX_NAME" \
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
   python /sandbox/configure_hermes_blender_mcp.py "$HOST_IP"
 ```
+
+If only the bounded workflow server is missing, rerun its idempotent installer:
+
+```bash
+"$GUIDE_REPO/scripts/install_blender_workflow_mcp.sh" \
+  "$NEMOCLAW_SANDBOX_NAME" "$HOST_IP"
+```
+
+Do not replace the typed tools with long inline Python inside
+`execute_blender_code`. Use `blenderhandoff mcp test blender-workflow` and the
+proxy log to diagnose the owning surface.
 
 ### OVRTX render reports an invalid USD export context
 
@@ -760,7 +882,7 @@ the scripted smoke render before starting another Hermes request.
 
 The following versions completed host setup, visible OVRTX scene rendering,
 NemoClaw sandbox setup, skill installation, and Blender MCP registration on
-July 15, 2026. The native OVPhysX workflow was also validated on this platform
+July 17, 2026. The native OVPhysX workflow was also validated on this platform
 in the preceding installation; repeat it after each clean install using the
 prompt in the validation section above.
 

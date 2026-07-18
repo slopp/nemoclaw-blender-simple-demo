@@ -29,6 +29,9 @@ Together they can:
 - replay simulation poses in Blender and create visual evidence such as GIFs;
 - report host artifact paths and distinguish native simulation from Blender
   replay rendering.
+- route complex handoff work through bounded typed MCP operations that return
+  host-side sizes and SHA-256 receipts instead of relying on unverified agent
+  narratives.
 
 The setup and demo are validated on NVIDIA DGX Station with Ubuntu 24.04 ARM64,
 a GB300 for local inference, and an RTX PRO 6000 Blackwell GPU for OVRTX.
@@ -96,7 +99,11 @@ CLI, the Hermes coaching skill, and the upstream OV add-on skills for Codex.
           specialized OV skills
                     |
         approved Blender MCP policy
-                    |
+          /                 \
+ live Blender MCP      typed workflow MCP
+                            |
+                   bounded host receipts
+          \                 /
        visible host Blender on RTX PRO
               |                 |
             OVRTX             OVPhysX
@@ -106,13 +113,16 @@ CLI, the Hermes coaching skill, and the upstream OV add-on skills for Codex.
 The OpenShell sandbox contains Hermes and its skills. Blender, the OV add-on,
 native runtime libraries, fixture data, and outputs remain on the host. The
 policy permits Hermes to reach only the host Blender MCP proxy needed by this
-workflow. An always-on SOUL block makes this boundary explicit, and a searchable
-copy of the official Blender 5.1 Python API helps Hermes verify version-specific
-properties and operators against the running Blender process before mutation.
-In the Codex path, Codex invokes Hermes with `hermes chat -q` through
-`nemohermes ... exec` or `openshell sandbox exec`. By default it does not bypass
-Hermes to operate Blender directly; the coaching skill requires explicit user
-authorization for fallback execution.
+workflow and a bounded workflow proxy for inventory, USD export/inspection,
+and artifact verification. An always-on SOUL block makes the host boundary
+explicit, and a searchable copy of the official Blender 5.1 Python API helps
+Hermes verify version-specific properties and operators against the running
+Blender process before mutation. An isolated `blenderhandoff` Hermes profile
+disables terminal and file tools for bounded handoff tasks while leaving the
+normal demo profile unchanged. In the Codex path, Codex invokes Hermes with
+`hermes chat -q` through `nemohermes ... exec` or `openshell sandbox exec`. By
+default it does not bypass Hermes to operate Blender directly; the coaching
+skill requires explicit user authorization for fallback execution.
 
 ## Prerequisites
 
@@ -145,7 +155,8 @@ exact tested component matrix.
 | [`codex-skills/`](codex-skills/) | Codex coaching skills for delegating OV work to Hermes |
 | [`policies/`](policies/) | OpenShell network policies for Blender MCP and optional fixture access |
 | [`prompts/`](prompts/) | Render and physics prompts for CLI or dashboard use |
-| [`scripts/`](scripts/) | Blender install, OV runtime materialization, vLLM launch, MCP verification, and OVPhysX host helpers |
+| [`scripts/`](scripts/) | Blender install, OV runtime materialization, vLLM launch, bounded MCP workflow, verification, and OVPhysX host helpers |
+| [`docs/blender-sandbox-evaluation.md`](docs/blender-sandbox-evaluation.md) | Tiered evaluation method and evidence for host/sandbox routing |
 | [`patches/`](patches/) | Explicit temporary compatibility patches for ARM64 setup |
 | [`docs/assets/`](docs/assets/) | Validated demo output used by project documentation |
 

@@ -1,27 +1,78 @@
 #!/usr/bin/env python3
-"""Add or update a Blender MCP Streamable HTTP server in Hermes config."""
+"""Add or update bounded Blender MCP endpoints in a Hermes profile."""
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
-import sys
+import re
 
 import yaml
 
 
+WORKFLOW_TOOLS = [
+    "capability_probe",
+    "scene_inventory",
+    "usd_export",
+    "usd_inspect",
+    "artifact_receipts",
+]
+
+
+def parser() -> argparse.ArgumentParser:
+    result = argparse.ArgumentParser(description=__doc__)
+    result.add_argument("host_ip")
+    result.add_argument("--profile")
+    result.add_argument("--include-workflow", action="store_true")
+    return result
+
+
 def main() -> int:
-    if len(sys.argv) != 2:
-        print("usage: configure_hermes_blender_mcp.py <host-ip>", file=sys.stderr)
-        return 2
-    host = sys.argv[1]
-    config_path = Path("/sandbox/.hermes/config.yaml")
+    args = parser().parse_args()
+    if not re.fullmatch(r"[A-Za-z0-9._:-]+", args.host_ip):
+        raise SystemExit("host IP contains unsupported characters")
+    if args.profile and not re.fullmatch(r"[a-z0-9]+", args.profile):
+        raise SystemExit("profile name must contain only lowercase letters and digits")
+    if args.profile:
+        config_path = Path("/sandbox/.hermes/profiles") / args.profile / "config.yaml"
+    else:
+        config_path = Path("/sandbox/.hermes/config.yaml")
+    if not config_path.is_file():
+        raise SystemExit(f"Hermes configuration is unavailable: {config_path}")
     cfg = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
-    cfg.setdefault("mcp_servers", {})["blender"] = {
-        "url": f"http://{host}:9877/mcp",
-        "enabled": True,
-    }
+    if not isinstance(cfg, dict):
+        raise SystemExit(f"Hermes configuration root must be a mapping: {config_path}")
+    servers = cfg.get("mcp_servers")
+    if not isinstance(servers, dict):
+        servers = {}
+        cfg["mcp_servers"] = servers
+    if args.include_workflow:
+        # The isolated handoff profile must not inherit the raw Blender MCP.
+        # Hermes can surface MCP prompt/resource helpers through deferred
+        # discovery even when tools.include restricts ordinary tool calls.
+        servers.clear()
+        servers["blender-workflow"] = {
+            "url": f"http://{args.host_ip}:9878/mcp",
+            "enabled": True,
+            "tools": {"include": WORKFLOW_TOOLS},
+        }
+        platforms = cfg.setdefault("platforms", {})
+        if not isinstance(platforms, dict):
+            raise SystemExit("Hermes platforms configuration must be a mapping")
+        api_server = platforms.setdefault("api_server", {})
+        if not isinstance(api_server, dict):
+            raise SystemExit("Hermes api_server configuration must be a mapping")
+        api_server["enabled"] = False
+    else:
+        servers["blender"] = {
+            "url": f"http://{args.host_ip}:9877/mcp",
+            "enabled": True,
+        }
     config_path.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
-    print(f"configured Blender MCP server at http://{host}:9877/mcp")
+    endpoints = [
+        f"http://{args.host_ip}:{9878 if args.include_workflow else 9877}/mcp"
+    ]
+    print(f"configured {', '.join(endpoints)} in {config_path}")
     return 0
 
 

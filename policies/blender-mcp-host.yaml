@@ -1,6 +1,6 @@
 preset:
   name: blender-mcp-host
-  description: "Allow Hermes to reach the host-side Blender MCP HTTP/SSE proxy"
+  description: "Allow Hermes to reach the host-side Blender and bounded workflow MCP proxies"
 
 network_policies:
   blender_mcp_host:
@@ -8,6 +8,14 @@ network_policies:
     endpoints:
       - host: "HOST_IP_PLACEHOLDER"
         port: 9877
+        protocol: rest
+        enforcement: enforce
+        rules:
+          - allow: { method: GET, path: "/**" }
+          - allow: { method: POST, path: "/**" }
+          - allow: { method: DELETE, path: "/**" }
+      - host: "HOST_IP_PLACEHOLDER"
+        port: 9878
         protocol: rest
         enforcement: enforce
         rules:
@@ -23,4 +31,3 @@ network_policies:
       - { path: /usr/bin/node* }
       - { path: /usr/bin/curl }
       - { path: /usr/local/bin/curl }
-
