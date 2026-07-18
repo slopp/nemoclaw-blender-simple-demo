@@ -4,6 +4,7 @@ set -euo pipefail
 SANDBOX="${1:-${NEMOCLAW_SANDBOX_NAME:-ov-blender-hermes}}"
 HOST_IP="${2:-${HOST_IP:-}}"
 PROFILE="${BLENDER_HANDOFF_PROFILE:-blenderhandoff}"
+RAW_PROFILE="${BLENDER_RAW_PROFILE:-blenderraw}"
 GUIDE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DEMO_ROOT="${DEMO_ROOT:-$HOME/work/ov-blender-hermes-demo}"
 INSTALL_ROOT="${BLENDER_WORKFLOW_INSTALL_ROOT:-$HOME/.local/share/nemoclaw-blender}"
@@ -63,9 +64,13 @@ if [ "$http_status" != "406" ]; then
 fi
 
 nemohermes sandbox upload "$SANDBOX" \
+  "$GUIDE_ROOT/scripts/configure_blender_raw_profile.sh" /sandbox/
+nemohermes sandbox upload "$SANDBOX" \
   "$GUIDE_ROOT/scripts/configure_blender_handoff_profile.sh" /sandbox/
 nemohermes sandbox upload "$SANDBOX" \
   "$GUIDE_ROOT/scripts/configure_hermes_blender_mcp.py" /sandbox/
+nemohermes "$SANDBOX" exec --timeout 120 -- \
+  bash /sandbox/configure_blender_raw_profile.sh "$HOST_IP" "$RAW_PROFILE"
 nemohermes "$SANDBOX" exec --timeout 120 -- \
   bash /sandbox/configure_blender_handoff_profile.sh "$HOST_IP" "$PROFILE"
 nemohermes "$SANDBOX" exec --timeout 30 -- \
@@ -77,4 +82,5 @@ nemohermes "$SANDBOX" exec --timeout 30 -- \
   test -f "/sandbox/.hermes/profiles/$PROFILE/skills/blender-host-sandbox-boundary/SKILL.md"
 
 echo "started typed Blender workflow MCP proxy at http://$HOST_IP:9878/mcp"
+echo "configured raw Blender profile $RAW_PROFILE in sandbox $SANDBOX"
 echo "configured Hermes profile $PROFILE in sandbox $SANDBOX"

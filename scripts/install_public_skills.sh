@@ -66,4 +66,15 @@ for skill_dir in "$GUIDE_ROOT"/skills/*; do
   fi
 done
 
+# Hermes 0.18 flattens nested skill files during `skill install`. Restore the
+# path documented by blender-python-api-verification explicitly.
+api_skill_root="/sandbox/.hermes/skills/blender-python-api-verification"
+nemohermes "$SANDBOX" exec --timeout 30 -- \
+  mkdir -p "$api_skill_root/scripts"
+nemohermes sandbox upload "$SANDBOX" \
+  "$GUIDE_ROOT/skills/blender-python-api-verification/scripts/search_blender_api.py" \
+  "$api_skill_root/scripts/"
+nemohermes "$SANDBOX" exec --timeout 30 -- \
+  test -f "$api_skill_root/scripts/search_blender_api.py"
+
 echo "installed $count public skills and $guide_count guide-specific skills into sandbox $SANDBOX"
