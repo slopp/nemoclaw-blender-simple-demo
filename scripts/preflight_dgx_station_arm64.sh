@@ -3,7 +3,9 @@ set -uo pipefail
 
 MIN_FREE_GIB="${MIN_FREE_GIB:-600}"
 STORAGE_PATH="${STORAGE_PATH:-$HOME}"
-OV_GITHUB_REPO="${OV_GITHUB_REPO:-NVIDIA-Omniverse/ov-blender-example-internal}"
+OV_GITHUB_REPO="${OV_GITHUB_REPO:-NVIDIA-Omniverse/omniverse-labs}"
+OV_RELEASE_TAG="${OV_RELEASE_TAG:-ov-blender-example-linux-aarch64}"
+OV_RELEASE_URL="${OV_RELEASE_URL:-https://github.com/$OV_GITHUB_REPO/releases/tag/$OV_RELEASE_TAG}"
 TARGET_MODEL_CACHE="${TARGET_MODEL_CACHE:-$HOME/.cache/huggingface/hub/models--nvidia--NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4}"
 
 pass_count=0
@@ -20,7 +22,9 @@ Usage:
 Environment:
   MIN_FREE_GIB       Required free space. Default: 600
   STORAGE_PATH       Path used for the free-space check. Default: $HOME
-  OV_GITHUB_REPO    Private OV repository checked through gh
+  OV_GITHUB_REPO    Public OV repository. Default: NVIDIA-Omniverse/omniverse-labs
+  OV_RELEASE_TAG    Explicit OV release tag for this platform
+  OV_RELEASE_URL    Exact public OV Release page URL
 
 The script does not install packages, stop services, delete files, or print
 credential values. It exits nonzero while required setup items are missing.
@@ -243,7 +247,6 @@ if has_command dpkg-query; then
     curl \
     git \
     git-lfs \
-    gh \
     jq \
     unzip \
     zip \
@@ -310,21 +313,27 @@ else
   fail "$USER does not belong to the docker group"
 fi
 
-section "Credentials and private repository"
+section "Credentials and public OV distribution"
 
-if has_command gh; then
-  if gh auth status >/dev/null 2>&1; then
-    pass "GitHub CLI authentication is configured"
-    if gh repo view "$OV_GITHUB_REPO" --json nameWithOwner >/dev/null 2>&1; then
-      pass "GitHub account can read $OV_GITHUB_REPO"
-    else
-      fail "GitHub account cannot read $OV_GITHUB_REPO"
-    fi
+if has_command git; then
+  if git ls-remote --exit-code \
+    "https://github.com/$OV_GITHUB_REPO.git" refs/heads/main >/dev/null 2>&1; then
+    pass "public Git checkout is reachable: $OV_GITHUB_REPO"
   else
-    fail "GitHub CLI is not authenticated"
+    fail "public Git checkout is not reachable: $OV_GITHUB_REPO"
   fi
 else
-  fail "private OV repository access cannot be checked without gh"
+  fail "public OV repository access cannot be checked without git"
+fi
+
+if has_command curl; then
+  if curl -fsSL --max-time 20 -o /dev/null "$OV_RELEASE_URL"; then
+    pass "public OV Release page is reachable: $OV_RELEASE_TAG"
+  else
+    fail "public OV Release page is not reachable: $OV_RELEASE_URL"
+  fi
+else
+  fail "public OV Release access cannot be checked without curl"
 fi
 
 if [ -n "${HF_TOKEN:-}" ] || [ -n "${HUGGING_FACE_HUB_TOKEN:-}" ]; then

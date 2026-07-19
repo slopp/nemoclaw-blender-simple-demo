@@ -2,15 +2,15 @@
 set -euo pipefail
 
 SANDBOX="${1:-${NEMOCLAW_SANDBOX_NAME:-ov-blender-hermes}}"
-OV_REPO="${2:-${OV_REPO:-$HOME/work/ov-blender-example-internal}}"
-SANDBOX_DEST="${3:-${OV_REPO_SANDBOX:-/sandbox/ov-blender-example-internal}}"
+OV_REPO="${2:-${OV_REPO:-$HOME/work/ov-blender-hermes-demo/omniverse-labs/projects/ov-blender-example}}"
+SANDBOX_DEST="${3:-${OV_REPO_SANDBOX:-/sandbox/ov-blender-example}}"
 
 usage() {
   cat <<'USAGE'
 Upload the ov-blender-example checkout into a NemoHermes sandbox.
 
-The public skill installer only installs SKILL.md directories. Use this script
-when a prompt needs the repo's public tests, fixtures, helper scripts, or source
+The skill installer only installs SKILL.md directories. Use this script when a
+prompt needs the official project's tests, fixtures, helper scripts, or source
 files inside the Hermes sandbox.
 
 Usage:
@@ -33,13 +33,13 @@ if ! command -v nemohermes >/dev/null 2>&1; then
   exit 1
 fi
 
-if [ ! -d "$OV_REPO/.git" ]; then
-  echo "ov-blender-example checkout not found: $OV_REPO" >&2
+if [ ! -f "$OV_REPO/AGENTS.md" ] || [ ! -f "$OV_REPO/skills/manifest.json" ]; then
+  echo "official ov-blender-example project not found: $OV_REPO" >&2
   exit 1
 fi
 
-if [ ! -d "$OV_REPO/public" ]; then
-  echo "expected public/ in ov-blender-example checkout: $OV_REPO" >&2
+if [ ! -d "$OV_REPO/addon" ] || [ ! -d "$OV_REPO/tests/fixtures" ]; then
+  echo "expected addon/ and tests/fixtures/ in ov-blender-example project: $OV_REPO" >&2
   exit 1
 fi
 
@@ -114,7 +114,7 @@ nemohermes "$SANDBOX" exec --timeout 30 -- sh -lc "rm -rf $SANDBOX_DEST && mkdir
 echo "uploading $OV_REPO to $SANDBOX:$SANDBOX_DEST"
 nemohermes "$SANDBOX" upload "$stage_dir" "$SANDBOX_DEST"
 
-verify_cmd="set -eu; if [ -d $SANDBOX_DEST/public ]; then :; elif [ -d $SANDBOX_DEST/$repo_name/public ]; then nested_tmp=${SANDBOX_DEST}.nested.\$\$; mv $SANDBOX_DEST/$repo_name \"\$nested_tmp\"; rm -rf $SANDBOX_DEST; mv \"\$nested_tmp\" $SANDBOX_DEST; else echo 'public directory was not found after upload' >&2; find $SANDBOX_DEST -maxdepth 3 -type d 2>/dev/null | sed -n '1,40p' >&2; exit 1; fi; test -d $SANDBOX_DEST/public/skills; find $SANDBOX_DEST -maxdepth 2 -type d | sort | sed -n '1,40p'"
+verify_cmd="set -eu; if [ -d $SANDBOX_DEST/skills ]; then :; elif [ -d $SANDBOX_DEST/$repo_name/skills ]; then nested_tmp=${SANDBOX_DEST}.nested.\$\$; mv $SANDBOX_DEST/$repo_name \"\$nested_tmp\"; rm -rf $SANDBOX_DEST; mv \"\$nested_tmp\" $SANDBOX_DEST; else echo 'skills directory was not found after upload' >&2; find $SANDBOX_DEST -maxdepth 3 -type d 2>/dev/null | sed -n '1,40p' >&2; exit 1; fi; test -f $SANDBOX_DEST/skills/manifest.json; test -d $SANDBOX_DEST/addon; find $SANDBOX_DEST -maxdepth 2 -type d | sort | sed -n '1,40p'"
 nemohermes "$SANDBOX" exec --timeout 60 -- sh -lc "$verify_cmd"
 
 echo "uploaded ov-blender-example checkout to sandbox path $SANDBOX_DEST"

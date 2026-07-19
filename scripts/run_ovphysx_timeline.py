@@ -92,7 +92,7 @@ def _compact_status(output_dir: Path, report: Mapping[str, Any]) -> dict[str, An
 
 
 def _run(args: argparse.Namespace) -> dict[str, Any]:
-    addon_root = args.ov_repo / "public" / "addon"
+    addon_root = args.ov_repo / "addon"
     server = _resolve_ovphysx_server(args.runtime_root)
     native = args.runtime_root / "native"
     ovphysx_root = args.runtime_root / "runtime" / "ovphysx"

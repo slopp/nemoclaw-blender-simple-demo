@@ -83,4 +83,4 @@ if (( failures > 0 )); then
 fi
 
 printf 'RESULT: ready (%d warning(s))\n' "$warnings"
-printf 'Launch pin, if GPU 0 is the RTX PRO device: CUDA_VISIBLE_DEVICES=0 SRTX_ACTIVE_CUDA_GPUS=0 %q\n' "$blender"
+printf 'Launch pin, if GPU 0 is the RTX PRO device: CUDA_VISIBLE_DEVICES=0 OVRTX_ACTIVE_CUDA_GPUS=0 %q\n' "$blender"
