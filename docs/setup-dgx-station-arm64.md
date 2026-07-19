@@ -298,17 +298,22 @@ Stop following logs with `Ctrl-C`; that does not stop the container.
 ```bash
 curl -fsS http://127.0.0.1:8000/v1/models | jq \
   '.data[] | {id, root, max_model_len}'
+export VLLM_MODEL_ID="$(
+  curl -fsS http://127.0.0.1:8000/v1/models | jq -er '.data[0].id'
+)"
 curl -fsS http://127.0.0.1:8000/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"model":"nemotron-ultra","messages":[{"role":"user","content":"Return exactly INFERENCE_OK"}],"max_tokens":16}' | \
+  -d "$(jq -nc --arg model "$VLLM_MODEL_ID" \
+    '{model:$model,messages:[{role:"user",content:"Return exactly INFERENCE_OK"}],max_tokens:64}')" | \
   jq -r '.choices[0].message.content'
 docker ps --filter name=nemotron-ultra-vllm
 ```
 
-Expected model ID: `nemotron-ultra`; the completion probe must return
-`INFERENCE_OK`. A healthy `/v1/models` response alone is insufficient because
-the model endpoint can be registered while its first generation request still
-fails.
+The model ID must be read from `/v1/models`; deployments may expose the full
+repository model ID instead of the launcher's short alias. The completion probe
+must return `INFERENCE_OK`. A healthy `/v1/models` response alone is
+insufficient because the model endpoint can be registered while its first
+generation request still fails.
 
 ## 7. Install NemoClaw, OpenShell, and Hermes
 
@@ -321,6 +326,7 @@ The installer performs Hermes onboarding on DGX Station.
 export NEMOCLAW_AGENT=hermes
 export NEMOCLAW_SANDBOX_NAME="ov-blender-hermes"
 export NEMOCLAW_GATEWAY_PORT="18081"
+export NEMOCLAW_OPENSHELL_GATEWAY_STATE_DIR="$HOME/.local/state/nemoclaw/openshell-docker-gateway-$NEMOCLAW_GATEWAY_PORT"
 export NEMOCLAW_PROVIDER=vllm
 export NEMOCLAW_VLLM_LOCAL_TOKEN=none_needed
 export NEMOCLAW_ACCEPT_THIRD_PARTY_SOFTWARE=1
@@ -333,10 +339,11 @@ NODE_BIN="$(dirname "$(bash -lc 'command -v node')")"
 export PATH="$HOME/.local/bin:$NODE_BIN:$PATH"
 ```
 
-Use a login shell or explicitly export the same `PATH` and
-`NEMOCLAW_GATEWAY_PORT` for every later non-interactive SSH command. Otherwise
-SSH can resolve a different system OpenShell CLI or select a stale gateway.
-Do not add a systemd override during normal setup.
+Use a login shell or explicitly export the same `PATH`,
+`NEMOCLAW_GATEWAY_PORT`, and `NEMOCLAW_OPENSHELL_GATEWAY_STATE_DIR` for every
+later non-interactive SSH command. Otherwise SSH can resolve a different system
+OpenShell CLI or the status preflight can inspect a stale default-gateway
+runtime marker. Do not add a systemd override during normal setup.
 
 ### Validation
 
@@ -392,6 +399,8 @@ nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
   test -f /sandbox/.hermes/skills/blender-python-api-verification/SKILL.md
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
+  test -f /sandbox/.hermes/skills/blender-python-api-verification/scripts/search_blender_api.py
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
   test -f /sandbox/.hermes/skills/blender-host-sandbox-boundary/SKILL.md
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
   grep -q nemoclaw-blender-host-boundary /sandbox/.hermes/SOUL.md
@@ -426,18 +435,9 @@ echo $! > "$DEMO_ROOT/out/blender-mcp-proxy.pid"
 sleep 5
 ```
 
-Register the Streamable HTTP endpoint with Hermes:
-
-```bash
-export PATH="$HOME/.local/bin:$PATH"
-nemohermes sandbox upload "$NEMOCLAW_SANDBOX_NAME" \
-  "$GUIDE_REPO/scripts/configure_hermes_blender_mcp.py" /sandbox/
-nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
-  python /sandbox/configure_hermes_blender_mcp.py "$HOST_IP"
-```
-
-Start the bounded workflow MCP proxy and create an isolated Hermes profile for
-scene inventory, USD export, USD inspection, and artifact receipts:
+Start the bounded workflow MCP proxy and create two explicit Hermes profiles:
+`blenderraw` for exploratory Blender/OVRTX/OVPhysX tasks and `blenderhandoff`
+for scene inventory, USD export, USD inspection, and artifact receipts:
 
 ```bash
 "$GUIDE_REPO/scripts/install_blender_workflow_mcp.sh" \
@@ -452,8 +452,13 @@ chat. This prevents `skill_manage` from becoming an unintended file-write
 escape hatch. The profile does not register the raw Blender MCP because Hermes
 can surface MCP resource and prompt helpers through deferred discovery even
 when ordinary tools are allowlisted. It also disables the cloned API-server
-surface and removes any other inherited MCP servers. The normal Hermes profile
-keeps raw Blender MCP and remains available for OVRTX and OVPhysX demo prompts.
+surface and removes any other inherited MCP servers. The separate `blenderraw`
+profile exposes raw Blender MCP without editing the integrity-protected base
+Hermes configuration. The installer selects `blenderraw` as Hermes' sticky
+default, so plain TUI commands and the machine dashboard automatically target
+it; the `blenderraw` alias remains available for explicit selection. Do not run
+`configure_hermes_blender_mcp.py` without a named profile or add the
+unauthenticated HTTP endpoint to the base config.
 
 > **Security:** The two `mcp-proxy` listeners do not provide application-layer
 > authentication. Keep ports 9877 and 9878 restricted to the trusted DGX host
@@ -471,6 +476,8 @@ curl -sS -o /dev/null -w '%{http_code}\n' --max-time 5 \
   http://127.0.0.1:9878/mcp
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- hermes mcp list
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
+  hermes mcp test blender
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
   /sandbox/.local/bin/blenderhandoff mcp test blender-workflow
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
   /sandbox/.local/bin/blenderhandoff tools list
@@ -479,8 +486,9 @@ nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
 ```
 
 An unauthenticated `GET /mcp` normally returns HTTP `406`, which confirms each
-proxy is listening. The normal Hermes profile keeps raw Blender MCP for
-interactive OVRTX/OVPhysX tasks. The isolated `blenderhandoff` profile must
+proxy is listening. Plain `hermes mcp list` must resolve the sticky
+`blenderraw` profile and discover the raw Blender tools. The integrity-protected
+base profile remains unchanged, and the isolated `blenderhandoff` profile must
 list only the five `blender-workflow` tools.
 
 ## 10. Start the Visible Blender Session
@@ -564,9 +572,10 @@ installed skills provide the Blender, OVRTX, and OVPhysX procedure. For more
 direct-Hermes examples, see
 [`prompts/demo-prompts.md`](../prompts/demo-prompts.md).
 
-> **Human step: optional Hermes dashboard.** Run
-> `nemohermes ov-blender-hermes dashboard-url --quiet`, open the reported URL,
-> and paste a prompt from `prompts/demo-prompts.md`.
+The Hermes machine dashboard aligns its profile switcher with the sticky
+`blenderraw` profile on load, so its Chat and MCP pages use the same raw Blender
+configuration as plain TUI commands. Confirm `blenderraw` appears in the
+dashboard profile switcher before running a demo prompt.
 
 ### Validation
 
@@ -744,6 +753,7 @@ login-equivalent command path explicitly:
 
 ```bash
 export NEMOCLAW_GATEWAY_PORT=18081
+export NEMOCLAW_OPENSHELL_GATEWAY_STATE_DIR="$HOME/.local/state/nemoclaw/openshell-docker-gateway-$NEMOCLAW_GATEWAY_PORT"
 NODE_BIN="$(dirname "$(bash -lc 'command -v node')")"
 export PATH="$HOME/.local/bin:$NODE_BIN:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 ```
@@ -831,17 +841,8 @@ tail -100 "$DEMO_ROOT/out/blender-workflow-mcp.log"
 tail -100 "$DEMO_ROOT/out/visible-blender-mcp.log"
 ```
 
-Restart the detached proxy if port 9877 is absent. If registration occurred
-while the proxy was down, rerun the deterministic registration helper:
-
-```bash
-nemohermes sandbox upload "$NEMOCLAW_SANDBOX_NAME" \
-  "$GUIDE_REPO/scripts/configure_hermes_blender_mcp.py" /sandbox/
-nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
-  python /sandbox/configure_hermes_blender_mcp.py "$HOST_IP"
-```
-
-If only the bounded workflow server is missing, rerun its idempotent installer:
+Restart the detached proxy if port 9877 is absent. If either profile or the
+bounded workflow server is missing, rerun the idempotent installer:
 
 ```bash
 "$GUIDE_REPO/scripts/install_blender_workflow_mcp.sh" \
@@ -851,6 +852,29 @@ If only the bounded workflow server is missing, rerun its idempotent installer:
 Do not replace the typed tools with long inline Python inside
 `execute_blender_code`. Use `blenderhandoff mcp test blender-workflow` and the
 proxy log to diagnose the owning surface.
+
+### Sandbox start loses demo-installed assets
+
+After `nemohermes <sandbox> stop` followed by `start`, verify the guide-owned
+state instead of relying only on the container phase:
+
+```bash
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
+  test -f /sandbox/reference/blender-python-api-5.1/api-search.sqlite3
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
+  test -x /sandbox/.local/bin/blenderraw
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
+  test -x /sandbox/.local/bin/blenderhandoff
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 60 -- \
+  hermes mcp test blender
+```
+
+If any check fails, rerun section 8 in order and then rerun
+`install_blender_workflow_mcp.sh`. The profile installers refresh each profile
+with the current default skill set and reselect `blenderraw` as the sticky
+default on every run. Do not restore raw MCP by editing
+`/sandbox/.hermes/config.yaml`; current NemoClaw validates that file against its
+persisted MCP intent and can quarantine the Hermes gateway on drift.
 
 ### OVRTX render reports an invalid USD export context
 
@@ -882,26 +906,26 @@ the scripted smoke render before starting another Hermes request.
 
 The following versions completed host setup, visible OVRTX scene rendering,
 NemoClaw sandbox setup, skill installation, and Blender MCP registration on
-July 17, 2026. The native OVPhysX workflow was also validated on this platform
+July 18, 2026. The native OVPhysX workflow was also validated on this platform
 in the preceding installation; repeat it after each clean install using the
 prompt in the validation section above.
 
 | Component | Validated version or identity |
 | --- | --- |
 | Platform | NVIDIA DGX Station, Ubuntu 24.04.4 LTS, ARM64 |
-| Kernel | `6.17.0-1014-nvidia-64k` |
+| Kernel | `6.17.0-1022-nvidia-64k` |
 | RTX GPU | NVIDIA RTX PRO 6000 Blackwell Max-Q, 97,887 MiB, GPU 0 |
 | LLM GPU | NVIDIA GB300, 256,703 MiB, GPU 1 |
-| NVIDIA driver | `595.58.03` |
+| NVIDIA driver | `610.43.03` |
 | Blender | `5.1.0`, native AArch64, embedded Python 3.13 |
 | OV add-on | `ovrtx Blender Example 0.1.0` |
-| OV source | commit `26d4fccd23dd6f03ee7073075e9791fd75020baa` from `main` |
+| OV source | commit `7d2bfcff616a824d6dec9ec5f0efeb3ffae108bc` from `main` |
 | OV runtime platform | `linux-aarch64` |
-| OV runtime manifest SHA-256 | `018d07ea701813cd126013b1499f0220bfb89dadbf7a1fd658b7aabda23ec026` |
+| OV runtime manifest SHA-256 | `75868aecc5f54921f4f6a68523644f6084d2cdccc4d36d8f5fc6349414016d55` |
 | vLLM | `vllm/vllm-openai:v0.22.0` |
-| Model | `nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4`, served as `nemotron-ultra` |
+| Model | `nvidia/nemotron-3-ultra-550b-a55b` as advertised by `/v1/models` |
 | Model context | 262,144 tokens |
-| NemoHermes | `0.0.81` |
+| NemoHermes | `0.0.83` |
 | Hermes Agent | `0.18.0` (`2026.7.1`) |
 | OpenShell CLI and gateway | `0.0.72` |
 | Docker | `29.2.1` |

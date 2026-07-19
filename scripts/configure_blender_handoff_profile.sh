@@ -23,6 +23,12 @@ if [ ! -x "$WRAPPER" ]; then
   hermes profile alias "$PROFILE" --name "$PROFILE"
 fi
 
+# Refresh skills on reruns after the default Hermes skill set was reinstalled.
+# The mutable skills toolset remains disabled below; the boundary skill is
+# preloaded read-only by the wrapper.
+mkdir -p "$PROFILE_ROOT/skills"
+cp -a /sandbox/.hermes/skills/. "$PROFILE_ROOT/skills/"
+
 python3 /sandbox/configure_hermes_blender_mcp.py "$HOST_IP" \
   --profile "$PROFILE" --include-workflow
 

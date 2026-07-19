@@ -126,8 +126,10 @@ read-only. Guidance also treats a missing bounded operation as a capability
 blocker instead of a reason to invent tools or edit skills. A follow-up run
 also showed that raw Blender MCP resource and prompt helpers remained visible
 to deferred tool discovery despite a `tools.include` allowlist, so the isolated
-profile now registers only the typed workflow MCP server. The normal profile
-retains raw Blender MCP for interactive OVRTX and OVPhysX work.
+profile now registers only the typed workflow MCP server. A separate
+`blenderraw` profile retains raw Blender MCP for interactive OVRTX and OVPhysX
+work without changing the base Hermes configuration. Hermes selects it as the
+sticky default so normal TUI and dashboard use does not require a wrapper.
 
 ### Hardened complex-prompt result
 
@@ -174,8 +176,9 @@ those turns without restoring arbitrary execution.
   boundary skill through the wrapper; otherwise `skill_manage` can write a
   hard-coded helper into an installed skill even when terminal, file, and code
   execution toolsets are disabled.
-- Preserve the normal Hermes profile for workflows that legitimately need the
-  existing OVRTX or OVPhysX skills.
+- Preserve the base Hermes profile without raw MCP configuration. Select the
+  separate `blenderraw` profile as the sticky default for normal workflows that
+  legitimately need raw Blender, OVRTX, or OVPhysX tools.
 
 ## Acceptance checklist
 

@@ -25,7 +25,7 @@ Before delegation:
 export PATH="$HOME/.local/bin:$PATH"
 export NEMOCLAW_SANDBOX_NAME="${NEMOCLAW_SANDBOX_NAME:-ov-blender-hermes}"
 nemohermes "$NEMOCLAW_SANDBOX_NAME" status
-pgrep -af 'nemohermes .* exec.*hermes chat|openshell sandbox exec.*hermes chat' || true
+pgrep -af 'nemohermes .* exec.*(hermes|blenderraw|blenderhandoff).*chat|openshell sandbox exec.*(hermes|blenderraw|blenderhandoff).*chat' || true
 ```
 
 Do not launch a duplicate request merely because an active request is quiet.
@@ -40,8 +40,12 @@ Keep these environments distinct:
 
 Choose the topology before prompting:
 
-- **MCP-only:** Hermes operates visible Blender. Host paths are valid only in
-  Blender MCP operations.
+- **Raw MCP:** run plain `hermes`; the sticky `blenderraw` profile operates
+  visible Blender with exploratory Blender, OVRTX, and OVPhysX tools. The
+  explicit `/sandbox/.local/bin/blenderraw` alias remains available. Host paths
+  are valid only in Blender MCP operations.
+- **Typed MCP:** run `/sandbox/.local/bin/blenderhandoff`; Hermes gets only the
+  bounded inventory, USD, and receipt operations.
 - **Sandbox-only:** Codex uploads inputs before delegation and downloads outputs
   afterward.
 - **Hybrid:** Hermes inspects or exports through Blender MCP; Codex uploads the
