@@ -453,9 +453,12 @@ escape hatch. The profile does not register the raw Blender MCP because Hermes
 can surface MCP resource and prompt helpers through deferred discovery even
 when ordinary tools are allowlisted. It also disables the cloned API-server
 surface and removes any other inherited MCP servers. The separate `blenderraw`
-profile exposes raw Blender MCP without editing the integrity-protected default
-Hermes configuration. Do not run `configure_hermes_blender_mcp.py` without a
-named profile or add the unauthenticated HTTP endpoint to the default config.
+profile exposes raw Blender MCP without editing the integrity-protected base
+Hermes configuration. The installer selects `blenderraw` as Hermes' sticky
+default, so plain TUI commands and the machine dashboard automatically target
+it; the `blenderraw` alias remains available for explicit selection. Do not run
+`configure_hermes_blender_mcp.py` without a named profile or add the
+unauthenticated HTTP endpoint to the base config.
 
 > **Security:** The two `mcp-proxy` listeners do not provide application-layer
 > authentication. Keep ports 9877 and 9878 restricted to the trusted DGX host
@@ -473,7 +476,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' --max-time 5 \
   http://127.0.0.1:9878/mcp
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- hermes mcp list
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
-  /sandbox/.local/bin/blenderraw mcp test blender
+  hermes mcp test blender
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
   /sandbox/.local/bin/blenderhandoff mcp test blender-workflow
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
@@ -483,9 +486,10 @@ nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
 ```
 
 An unauthenticated `GET /mcp` normally returns HTTP `406`, which confirms each
-proxy is listening. The default Hermes profile must report no MCP servers,
-`blenderraw` must discover the raw Blender tools, and the isolated
-`blenderhandoff` profile must list only the five `blender-workflow` tools.
+proxy is listening. Plain `hermes mcp list` must resolve the sticky
+`blenderraw` profile and discover the raw Blender tools. The integrity-protected
+base profile remains unchanged, and the isolated `blenderhandoff` profile must
+list only the five `blender-workflow` tools.
 
 ## 10. Start the Visible Blender Session
 
@@ -551,7 +555,7 @@ Start with a simple direct-Hermes rendering test:
 ```bash
 export PATH="$HOME/.local/bin:$PATH"
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 1200 -- \
-  /sandbox/.local/bin/blenderraw chat -Q --max-turns 30 -q \
+  hermes chat -Q --max-turns 30 -q \
   "Render the current scene as a beauty shot with OVRTX. Preserve the scene, save the PNG to $DEMO_ROOT/out/hermes-beauty-shot.png, and report the host path."
 ```
 
@@ -559,7 +563,7 @@ Then test native physics:
 
 ```bash
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 1200 -- \
-  /sandbox/.local/bin/blenderraw chat -Q --max-turns 30 -q \
+  hermes chat -Q --max-turns 30 -q \
   "Run the configured native OVPhysX stair-drop demo. Create a GIF of the blocks falling down the stairs and report the native simulation status and host GIF path."
 ```
 
@@ -568,9 +572,10 @@ installed skills provide the Blender, OVRTX, and OVPhysX procedure. For more
 direct-Hermes examples, see
 [`prompts/demo-prompts.md`](../prompts/demo-prompts.md).
 
-The default Hermes dashboard deliberately has no raw Blender MCP registration.
-Run the demo prompts through the `blenderraw` wrapper above; use the dashboard
-only for default-profile inspection unless authenticated MCP support is added.
+The Hermes machine dashboard aligns its profile switcher with the sticky
+`blenderraw` profile on load, so its Chat and MCP pages use the same raw Blender
+configuration as plain TUI commands. Confirm `blenderraw` appears in the
+dashboard profile switcher before running a demo prompt.
 
 ### Validation
 
@@ -860,13 +865,16 @@ nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
   test -x /sandbox/.local/bin/blenderraw
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 30 -- \
   test -x /sandbox/.local/bin/blenderhandoff
+nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 60 -- \
+  hermes mcp test blender
 ```
 
 If any check fails, rerun section 8 in order and then rerun
 `install_blender_workflow_mcp.sh`. The profile installers refresh each profile
-with the current default skill set on every run. Do not restore raw MCP by editing
-`/sandbox/.hermes/config.yaml`; current NemoClaw validates that file against
-its persisted MCP intent and can quarantine the Hermes gateway on drift.
+with the current default skill set and reselect `blenderraw` as the sticky
+default on every run. Do not restore raw MCP by editing
+`/sandbox/.hermes/config.yaml`; current NemoClaw validates that file against its
+persisted MCP intent and can quarantine the Hermes gateway on drift.
 
 ### OVRTX render reports an invalid USD export context
 

@@ -29,7 +29,9 @@ mkdir -p "$PROFILE_ROOT/skills"
 cp -a /sandbox/.hermes/skills/. "$PROFILE_ROOT/skills/"
 
 python3 /sandbox/configure_hermes_blender_mcp.py "$HOST_IP" --profile "$PROFILE"
-"$WRAPPER" mcp test blender
+hermes profile use "$PROFILE"
+hermes mcp test blender
 
 echo "configured raw Blender profile: $PROFILE"
+echo "sticky default profile: $PROFILE"
 echo "wrapper: $WRAPPER"

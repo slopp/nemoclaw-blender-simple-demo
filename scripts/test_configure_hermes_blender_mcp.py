@@ -14,6 +14,7 @@ import yaml
 
 
 SCRIPT = Path(__file__).with_name("configure_hermes_blender_mcp.py")
+RAW_PROFILE_SCRIPT = Path(__file__).with_name("configure_blender_raw_profile.sh")
 SPEC = importlib.util.spec_from_file_location("configure_hermes_blender_mcp", SCRIPT)
 if SPEC is None or SPEC.loader is None:
     raise RuntimeError(f"cannot load {SCRIPT}")
@@ -70,6 +71,18 @@ class ConfigureHermesBlenderMcpTests(unittest.TestCase):
     def test_profile_is_required(self) -> None:
         with redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             MODULE.parser().parse_args(["10.176.172.12"])
+
+    def test_raw_profile_becomes_the_plain_hermes_default(self) -> None:
+        source = RAW_PROFILE_SCRIPT.read_text(encoding="utf-8")
+        configure = (
+            'python3 /sandbox/configure_hermes_blender_mcp.py "$HOST_IP" '
+            '--profile "$PROFILE"'
+        )
+        select = 'hermes profile use "$PROFILE"'
+        verify = "hermes mcp test blender"
+
+        self.assertLess(source.index(configure), source.index(select))
+        self.assertLess(source.index(select), source.index(verify))
 
 
 if __name__ == "__main__":

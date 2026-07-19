@@ -146,7 +146,7 @@ specialist path from Codex setup.
 openshell sandbox exec \
   --name "$NEMOCLAW_SANDBOX_NAME" \
   --timeout 1200 --no-tty -- \
-  /sandbox/.local/bin/blenderraw chat -Q --max-turns 30 -q \
+  hermes chat -Q --max-turns 30 -q \
   "Render the current scene as a beauty shot with OVRTX. Preserve the scene and report the host PNG path."
 ```
 
@@ -154,7 +154,7 @@ The validated wrapper form is equivalent:
 
 ```bash
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 1200 -- \
-  /sandbox/.local/bin/blenderraw chat -Q --max-turns 30 -q \
+  hermes chat -Q --max-turns 30 -q \
   "Render the current scene as a beauty shot with OVRTX. Preserve the scene and report the host PNG path."
 ```
 

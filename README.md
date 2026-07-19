@@ -66,7 +66,7 @@ Test NemoClaw directly with a focused task:
 
 ```bash
 nemohermes ov-blender-hermes exec --timeout 1200 -- \
-  /sandbox/.local/bin/blenderraw chat -Q --max-turns 30 -q \
+  hermes chat -Q --max-turns 30 -q \
   "Render the current scene as a beauty shot with OVRTX. Preserve the scene and report the host PNG path."
 ```
 
@@ -118,11 +118,12 @@ and artifact verification. An always-on SOUL block makes the host boundary
 explicit, and a searchable copy of the official Blender 5.1 Python API helps
 Hermes verify version-specific properties and operators against the running
 Blender process before mutation. A `blenderraw` profile owns exploratory raw
-Blender MCP access, while an isolated `blenderhandoff` profile disables terminal
-and file tools for bounded handoff tasks. The integrity-protected default
-Hermes configuration remains unchanged. In the Codex path, Codex invokes one
-of these Hermes wrappers through `nemohermes ... exec` or
-`openshell sandbox exec`. By default it does not bypass Hermes to operate
+Blender MCP access and is selected as Hermes' sticky default, so the normal TUI
+and machine dashboard use it without changing the integrity-protected base
+configuration. An isolated `blenderhandoff` profile disables terminal and file
+tools for bounded handoff tasks and remains explicitly selected through its
+wrapper. In the Codex path, Codex invokes Hermes through `nemohermes ... exec`
+or `openshell sandbox exec`. By default it does not bypass Hermes to operate
 Blender directly; the coaching skill requires explicit user authorization for
 fallback execution.
 

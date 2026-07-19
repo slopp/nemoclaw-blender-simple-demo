@@ -25,7 +25,7 @@ Before delegation:
 export PATH="$HOME/.local/bin:$PATH"
 export NEMOCLAW_SANDBOX_NAME="${NEMOCLAW_SANDBOX_NAME:-ov-blender-hermes}"
 nemohermes "$NEMOCLAW_SANDBOX_NAME" status
-pgrep -af 'nemohermes .* exec.*(blenderraw|blenderhandoff).*chat|openshell sandbox exec.*(blenderraw|blenderhandoff).*chat' || true
+pgrep -af 'nemohermes .* exec.*(hermes|blenderraw|blenderhandoff).*chat|openshell sandbox exec.*(hermes|blenderraw|blenderhandoff).*chat' || true
 ```
 
 Do not launch a duplicate request merely because an active request is quiet.
@@ -40,9 +40,10 @@ Keep these environments distinct:
 
 Choose the topology before prompting:
 
-- **Raw MCP:** run `/sandbox/.local/bin/blenderraw`; Hermes operates visible
-  Blender with exploratory Blender, OVRTX, and OVPhysX tools. Host paths are
-  valid only in Blender MCP operations.
+- **Raw MCP:** run plain `hermes`; the sticky `blenderraw` profile operates
+  visible Blender with exploratory Blender, OVRTX, and OVPhysX tools. The
+  explicit `/sandbox/.local/bin/blenderraw` alias remains available. Host paths
+  are valid only in Blender MCP operations.
 - **Typed MCP:** run `/sandbox/.local/bin/blenderhandoff`; Hermes gets only the
   bounded inventory, USD, and receipt operations.
 - **Sandbox-only:** Codex uploads inputs before delegation and downloads outputs
@@ -85,13 +86,12 @@ Give Hermes enough time and tool turns to reason and execute:
 
 ```bash
 nemohermes "$NEMOCLAW_SANDBOX_NAME" exec --timeout 1200 -- \
-  /sandbox/.local/bin/blenderraw chat -Q --max-turns 30 -q "$HERMES_PROMPT"
+  hermes chat -Q --max-turns 30 -q "$HERMES_PROMPT"
 ```
 
-A new wrapper `chat -q` request is a fresh conversation. Carry the prior
-receipt and exact transferred paths into the next milestone. Poll an existing
-command session until it exits; logs are progress evidence, not a completion
-receipt.
+A new `hermes chat -q` request is a fresh conversation. Carry the prior receipt
+and exact transferred paths into the next milestone. Poll an existing command
+session until it exits; logs are progress evidence, not a completion receipt.
 
 ## Intervention policy
 
