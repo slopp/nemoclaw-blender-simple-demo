@@ -12,7 +12,7 @@ def main() -> int:
     parser.add_argument("--repo", type=Path, required=True)
     args = parser.parse_args()
 
-    path = args.repo.expanduser().resolve() / "public" / "scripts" / "run_ovphysx_drop_probe.py"
+    path = args.repo.expanduser().resolve() / "scripts" / "run_ovphysx_drop_probe.py"
     source = path.read_text(encoding="utf-8")
     if "import shutil\n" in source:
         print(f"already patched: {path}")

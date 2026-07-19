@@ -8,8 +8,8 @@ metadata:
 ---
 # OVPhysX Host Runtime Boundary
 
-Use this skill together with `ovphysx-simulation-workflow` and
-`ovphysx-drop-contact-acceptance` for this guide's split deployment.
+Use this skill together with the official `ovphysx-drop-contact-acceptance`
+skill for this guide's split deployment.
 
 ## Topology
 

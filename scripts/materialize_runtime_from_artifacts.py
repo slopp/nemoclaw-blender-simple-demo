@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Install an OVRTX/OVPhysX runtime bundle from a complete local artifact set.
+"""Install a paired OVRTX/OVPhysX release from local verified artifacts.
 
-Use this when the add-on build does not expose the newer Blender UI field named
-"Install Runtime From", or when the machine is intentionally offline.
+The runtime implementation is imported from the selected add-on ZIP so a
+mutable source checkout cannot drift from the release being installed.
 """
 
 from __future__ import annotations
@@ -17,7 +17,11 @@ import zipfile
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repo", type=Path, required=True, help="ov-blender-example checkout")
+    parser.add_argument(
+        "--repo",
+        type=Path,
+        help=argparse.SUPPRESS,
+    )
     parser.add_argument("--addon-zip", type=Path, required=True, help="ov-blender-example extension ZIP")
     parser.add_argument("--artifact-dir", type=Path, required=True, help="directory containing runtime component archives")
     parser.add_argument(
@@ -29,24 +33,23 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    addon_pkg_root = args.repo / "public" / "addon"
-    if not addon_pkg_root.is_dir():
-        raise SystemExit(f"missing public/addon package root: {addon_pkg_root}")
-    sys.path.insert(0, str(addon_pkg_root))
-
-    from ovrtx_blender_example.runtime_manifest import (  # noqa: PLC0415
-        RUNTIME_MANIFEST_NAME,
-        load_manifest_pin,
-        parse_manifest_bytes,
-    )
-    from ovrtx_blender_example.runtime_materializer import materialize_runtime  # noqa: PLC0415
-    from ovrtx_blender_example.runtime_store import verify  # noqa: PLC0415
-
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         with zipfile.ZipFile(args.addon_zip, "r") as archive:
             archive.extractall(tmp_path)
         extension_root = _find_extension_root(tmp_path)
+        sys.path.insert(0, str(extension_root))
+
+        from ovrtx_blender_example.runtime_manifest import (  # noqa: PLC0415
+            RUNTIME_MANIFEST_NAME,
+            load_manifest_pin,
+            parse_manifest_bytes,
+        )
+        from ovrtx_blender_example.runtime_materializer import (  # noqa: PLC0415
+            materialize_runtime,
+        )
+        from ovrtx_blender_example.runtime_store import verify  # noqa: PLC0415
+
         expected_manifest_sha256 = load_manifest_pin(extension_root)
         manifest_path = args.artifact_dir / RUNTIME_MANIFEST_NAME
         if not manifest_path.is_file():

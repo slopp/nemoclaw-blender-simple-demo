@@ -34,7 +34,8 @@ This path is designed for NVIDIA DGX Station running Ubuntu 24.04 ARM64.
 ```bash
 export GUIDE_REPO="$HOME/work/nemoclaw-blender-simple-demo"
 export DEMO_ROOT="$HOME/work/ov-blender-hermes-demo"
-export OV_REPO="$DEMO_ROOT/ov-blender-example-internal"
+export OV_MONOREPO="$DEMO_ROOT/omniverse-labs"
+export OV_REPO="$OV_MONOREPO/projects/ov-blender-example"
 export NEMOCLAW_SANDBOX_NAME="ov-blender-hermes"
 export PATH="$HOME/.local/bin:$PATH"
 ```
@@ -43,7 +44,7 @@ export PATH="$HOME/.local/bin:$PATH"
 
 ```bash
 test -f "$GUIDE_REPO/README.md"
-test -f "$OV_REPO/public/skills/manifest.json"
+test -f "$OV_REPO/skills/manifest.json"
 nemohermes "$NEMOCLAW_SANDBOX_NAME" status
 ```
 
@@ -100,15 +101,15 @@ codex login status
 
 The installer creates symlinks in `$HOME/.agents/skills`. It links this
 project's Hermes-coaching skills and every `SKILL.md` directory under the
-checked-out upstream `public/skills` tree. The links keep Codex on the same OV
-skill source as Hermes and automatically follow later `git pull` updates.
+official project's checked-out `skills` tree. The links keep Codex on the same
+OV skill source as Hermes and automatically follow later `git pull` updates.
 
 ### Command
 
 ```bash
 cd "$GUIDE_REPO"
-git -C "$OV_REPO" checkout main
-git -C "$OV_REPO" pull --ff-only origin main
+git -C "$OV_MONOREPO" checkout main
+git -C "$OV_MONOREPO" pull --ff-only origin main
 ./scripts/install_codex_skills.sh "$OV_REPO"
 ```
 
@@ -120,11 +121,11 @@ The installer refuses to overwrite an unrelated skill with the same name.
 test -L "$HOME/.agents/skills/coach-nemoclaw-hermes"
 test -f "$HOME/.agents/skills/coach-nemoclaw-hermes/SKILL.md"
 test -L "$HOME/.agents/skills/coordinate-nemoclaw-blender"
-git -C "$OV_REPO" rev-parse HEAD
+git -C "$OV_MONOREPO" rev-parse HEAD
 
-expected="$(find "$OV_REPO/public/skills" -mindepth 2 -maxdepth 2 \
+expected="$(find "$OV_REPO/skills" -mindepth 2 -maxdepth 2 \
   -name SKILL.md | wc -l)"
-installed="$(find "$OV_REPO/public/skills" -mindepth 2 -maxdepth 2 \
+installed="$(find "$OV_REPO/skills" -mindepth 2 -maxdepth 2 \
   -name SKILL.md -printf '%h\n' | while read -r skill; do
     test -f "$HOME/.agents/skills/$(basename "$skill")/SKILL.md" && echo ok
   done | wc -l)"
@@ -262,6 +263,6 @@ Update the OV checkout. Symlinks require no reinstall unless upstream adds or
 renames a skill directory:
 
 ```bash
-git -C "$OV_REPO" pull --ff-only origin main
+git -C "$OV_MONOREPO" pull --ff-only origin main
 "$GUIDE_REPO/scripts/install_codex_skills.sh" "$OV_REPO"
 ```

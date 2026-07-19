@@ -2,7 +2,7 @@
 set -euo pipefail
 
 GUIDE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-OV_REPO="${OV_REPO:-$HOME/work/ov-blender-hermes-demo/ov-blender-example-internal}"
+OV_REPO="${OV_REPO:-$HOME/work/ov-blender-hermes-demo/omniverse-labs/projects/ov-blender-example}"
 OV_RUNTIME_ROOT="${OV_RUNTIME_ROOT:-}"
 DEMO_ROOT="${DEMO_ROOT:-$HOME/work/ov-blender-hermes-demo}"
 INSTALL_ROOT="${OVPHYSX_HELPER_ROOT:-$HOME/.local/share/nemoclaw-blender}"
@@ -13,9 +13,9 @@ if [ -z "$OV_RUNTIME_ROOT" ]; then
   exit 2
 fi
 
-fixture_root="$OV_REPO/public/tests/fixtures/data/demo_stair_drop_1280x720"
+fixture_root="$OV_REPO/tests/fixtures/data/demo_stair_drop_1280x720"
 fixture="$fixture_root/fixture/stair_drop_ovrtx_ovphysx.usda"
-prepare_script="$OV_REPO/public/tests/fixtures/demo_stair_drop_1280x720/prepare.py"
+prepare_script="$OV_REPO/tests/fixtures/demo_stair_drop_1280x720/prepare.py"
 output_dir="${OVPHYSX_OUTPUT_DIR:-$DEMO_ROOT/out/stair-drop}"
 
 mkdir -p "$INSTALL_ROOT" "$CONFIG_ROOT" "$output_dir"

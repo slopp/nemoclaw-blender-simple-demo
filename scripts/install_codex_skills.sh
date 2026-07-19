@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-OV_REPO="${1:-${OV_REPO:-$HOME/work/ov-blender-example-internal}}"
+OV_REPO="${1:-${OV_REPO:-$HOME/work/ov-blender-hermes-demo/omniverse-labs/projects/ov-blender-example}}"
 GUIDE_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 CODEX_SKILLS_DIR="${CODEX_SKILLS_DIR:-$HOME/.agents/skills}"
 
@@ -23,22 +23,12 @@ if [ "${1:-}" = "-h" ] || [ "${1:-}" = "--help" ]; then
   exit 0
 fi
 
-if [ ! -d "$OV_REPO/.git" ] || [ ! -d "$OV_REPO/public/skills" ]; then
-  echo "OV add-on checkout with public skills not found: $OV_REPO" >&2
+if [ ! -f "$OV_REPO/skills/manifest.json" ]; then
+  echo "official OV project with skills not found: $OV_REPO" >&2
   exit 1
 fi
 
 mkdir -p "$CODEX_SKILLS_DIR"
-
-# Remove only stale links previously created from this upstream skill tree.
-# Project skills and unrelated user-installed skills are left untouched.
-for target in "$CODEX_SKILLS_DIR"/*; do
-  if [ -L "$target" ] && [ ! -e "$target" ]; then
-    case "$(readlink "$target")" in
-      "$OV_REPO"/public/skills/*) rm "$target" ;;
-    esac
-  fi
-done
 
 link_skill() {
   local source_dir="$1"
@@ -73,7 +63,7 @@ for skill_dir in "$GUIDE_ROOT"/codex-skills/*; do
 done
 
 count=0
-for skill_dir in "$OV_REPO"/public/skills/*; do
+for skill_dir in "$OV_REPO"/skills/*; do
   if [ -f "$skill_dir/SKILL.md" ]; then
     link_skill "$skill_dir"
     count=$((count + 1))

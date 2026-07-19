@@ -57,6 +57,8 @@ try:
     result = {
         "ok": bool(preflight and preflight.get("status") == "pass"),
         "addon_preferences_id": getattr(impl, "ADDON_PREFERENCES_ID", ""),
+        "blend_file": bpy.data.filepath,
+        "is_dirty": bool(bpy.data.is_dirty),
         "render_engine": bpy.context.scene.render.engine,
         "runtime": runtime,
         "started_async": started,

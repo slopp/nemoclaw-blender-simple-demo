@@ -33,9 +33,8 @@ Keep the environment variables from the first section in the same shell.
 
 ### Accounts and credentials
 
-- A GitHub token accepted by `gh auth login`, with read access to
-  `NVIDIA-Omniverse/ov-blender-example-internal` and its release assets. The
-  repository currently returns `404` to unauthenticated requests.
+- Public internet access to the official Omniverse Labs repository and its
+  release assets. GitHub authentication is not required.
 - A Hugging Face read token with access to
   `nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4`.
 - Internet access to GitHub, Hugging Face, NVIDIA, Ubuntu package repositories,
@@ -76,7 +75,7 @@ working state.
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
-  ca-certificates curl git git-lfs gh jq unzip zip xz-utils file \
+  ca-certificates curl git git-lfs jq unzip zip xz-utils file \
   python3 python3-pip python3-venv ffmpeg \
   nvidia-container-toolkit
 
@@ -112,32 +111,34 @@ cd "$HOME/work"
 git clone https://github.com/slopp/nemoclaw-blender-simple-demo.git
 export GUIDE_REPO="$HOME/work/nemoclaw-blender-simple-demo"
 export DEMO_ROOT="$HOME/work/ov-blender-hermes-demo"
-export OV_REPO="$DEMO_ROOT/ov-blender-example-internal"
+export OV_MONOREPO="$DEMO_ROOT/omniverse-labs"
+export OV_REPO="$OV_MONOREPO/projects/ov-blender-example"
 export OV_ARTIFACT_DIR="$DEMO_ROOT/ov-artifacts"
-export OV_GITHUB_REPO="NVIDIA-Omniverse/ov-blender-example-internal"
+export OV_GITHUB_REPO="NVIDIA-Omniverse/omniverse-labs"
+export OV_PLATFORM="linux-aarch64"
+export OV_RELEASE_TAG="ov-blender-example-$OV_PLATFORM"
+export OV_RELEASE_URL="https://github.com/$OV_GITHUB_REPO/releases/tag/$OV_RELEASE_TAG"
 export NEMOCLAW_SANDBOX_NAME="ov-blender-hermes"
 export NEMOCLAW_GATEWAY_PORT="18081"
 
 mkdir -p "$DEMO_ROOT" "$OV_ARTIFACT_DIR" "$DEMO_ROOT/out" "$DEMO_ROOT/scenes"
 ```
 
-> **Human step: authenticate GitHub.** Run `gh auth login` and provide the
-> GitHub token described in Prerequisites. Select GitHub.com and HTTPS.
-
 ```bash
-gh auth status
-git clone https://github.com/NVIDIA-Omniverse/ov-blender-example-internal.git "$OV_REPO"
-git -C "$OV_REPO" checkout main
-git -C "$OV_REPO" pull --ff-only origin main
+git clone --filter=blob:none --sparse \
+  https://github.com/NVIDIA-Omniverse/omniverse-labs.git "$OV_MONOREPO"
+git -C "$OV_MONOREPO" sparse-checkout set projects/ov-blender-example
+git -C "$OV_MONOREPO" checkout main
+git -C "$OV_MONOREPO" pull --ff-only origin main
 ```
 
 ### Validation
 
 ```bash
 test -f "$GUIDE_REPO/README.md"
-test -f "$OV_REPO/public/addon/ovrtx_blender_example/__init__.py"
-test -f "$OV_REPO/public/skills/manifest.json"
-git -C "$OV_REPO" rev-parse HEAD
+test -f "$OV_REPO/addon/ovrtx_blender_example/__init__.py"
+test -f "$OV_REPO/skills/manifest.json"
+git -C "$OV_MONOREPO" rev-parse HEAD
 ```
 
 ## 3. Install Blender 5.1
@@ -196,30 +197,15 @@ Do not start Blender yet. There is one visible Blender launch in section 10.
 
 ### Command
 
+The add-on and runtime must come from the same explicit public Release page.
+Do not substitute a discovered “latest” release or mix assets from another
+platform.
+
 ```bash
-export OV_PLATFORM="linux-aarch64"
-export OV_RELEASE_TAG="$(
-  gh release list \
-    --repo "$OV_GITHUB_REPO" \
-    --limit 100 \
-    --json tagName,publishedAt \
-    --jq '[.[] | select(.tagName | startswith("linux-aarch64-dev-"))] | sort_by(.publishedAt) | .[-1].tagName'
-)"
-test -n "$OV_RELEASE_TAG"
-printf 'Selected OV release: %s\n' "$OV_RELEASE_TAG"
-
-gh release view "$OV_RELEASE_TAG" \
-  --repo "$OV_GITHUB_REPO" \
-  --json tagName,publishedAt,isPrerelease,assets \
-  --jq '{tagName,publishedAt,isPrerelease,assets:[.assets[].name]}'
-
-gh release download "$OV_RELEASE_TAG" \
-  --repo "$OV_GITHUB_REPO" \
-  --pattern 'runtime-bundle-manifest.json' \
-  --pattern "ov-blender-example-${OV_PLATFORM}.zip" \
-  --pattern "ovrtx-*-${OV_PLATFORM}.zip" \
-  --pattern "ovphysx-*-${OV_PLATFORM}.zip" \
-  --dir "$OV_ARTIFACT_DIR"
+python3 "$GUIDE_REPO/scripts/download_ov_release.py" \
+  --release-url "$OV_RELEASE_URL" \
+  --platform "$OV_PLATFORM" \
+  --output-dir "$OV_ARTIFACT_DIR"
 
 export OV_ADDON_ZIP="$OV_ARTIFACT_DIR/ov-blender-example-${OV_PLATFORM}.zip"
 
@@ -234,15 +220,14 @@ export OV_EXTENSION_ROOT="$HOME/.config/blender/5.1/extensions/.user/user_defaul
 export OV_RUNTIME_ROOT="$OV_EXTENSION_ROOT/runtimes/$OV_PLATFORM/current"
 
 python3 "$GUIDE_REPO/scripts/materialize_runtime_from_artifacts.py" \
-  --repo "$OV_REPO" \
   --addon-zip "$OV_ADDON_ZIP" \
   --artifact-dir "$OV_ARTIFACT_DIR" \
   --storage-root "$OV_EXTENSION_ROOT"
 ```
 
-> **Temporary patch:** the materializer supplies a local artifact directory to
-> the add-on's runtime API. Replace it with the add-on's native local-artifact
-> install workflow when that interface is released for this platform.
+The helper imports the runtime installer from the selected add-on ZIP and gives
+it the complete paired artifact directory. This is the non-interactive form of
+the add-on's documented **Install Runtime From** local-directory workflow.
 
 Install this project's additive host helper:
 
@@ -259,7 +244,7 @@ test -f "$HOME/.config/blender/5.1/extensions/user_default/ovrtx_blender_example
 grep -E '^version|^platforms' \
   "$HOME/.config/blender/5.1/extensions/user_default/ovrtx_blender_example/blender_manifest.toml"
 test -x "$OV_RUNTIME_ROOT/bin/ovrtx-bridge-server"
-test -x "$OV_RUNTIME_ROOT/bin/ovphysx_grpc_server"
+test -x "$OV_RUNTIME_ROOT/bin/ovphysx-bridge-server"
 file "$OV_NATIVE_DIR/grpc/_cython"/cygrpc*.so | grep -E 'ARM aarch64|ARM64'
 file "$OV_NATIVE_DIR/google/_upb"/_message*.so | grep -E 'ARM aarch64|ARM64'
 test -x "$HOME/.local/share/nemoclaw-blender/ovphysx_host_helper.py"
@@ -379,10 +364,10 @@ nemohermes "$NEMOCLAW_SANDBOX_NAME" policy-add \
   --from-file "$DEMO_ROOT/blender-mcp-host.yaml" --yes
 ```
 
-The installer fetches `public/skills` from the latest upstream `main` and
-cleanly replaces each matching Hermes skill directory. Set
-`OV_SKILLS_REF=current` only when intentionally testing the checkout's current
-skill files without fetching upstream.
+The installer fetches the official project's `skills` tree from upstream
+`main` and installs every skill into Hermes. Set `OV_SKILLS_REF=current` only
+when intentionally testing the checkout's current skill files without fetching
+upstream.
 
 Skill installation messages may suggest restarting the agent gateway. A new
 Hermes chat session loads the skills; do not restart the OpenShell gateway.
@@ -515,7 +500,7 @@ env \
   BLENDER_MCP_HOST=127.0.0.1 \
   BLENDER_MCP_PORT=9876 \
   CUDA_VISIBLE_DEVICES=0 \
-  SRTX_ACTIVE_CUDA_GPUS=0 \
+  OVRTX_ACTIVE_CUDA_GPUS=0 \
   blender "$DEMO_ROOT/scenes/thejunkshopsplashscreen.blend" \
   --python "$GUIDE_REPO/scripts/start_visible_blender_mcp.py" \
   > "$DEMO_ROOT/out/visible-blender-mcp.log" 2>&1 &
@@ -625,22 +610,25 @@ zero-to-demo path.
 
 ### GitHub clone or release download returns 404
 
-The OV repository and release assets require authenticated access. Verify the
-active account and scopes:
+The official repository and releases are public. A `404` usually means the
+project path, platform tag, or paired asset name was changed. Confirm the exact
+documented locations and rerun the public-access preflight without adding a
+GitHub credential:
 
 ```bash
-gh auth status
-OV_RELEASE_TAG="$(
-  gh release list \
-    --repo "$OV_GITHUB_REPO" \
-    --limit 100 \
-    --json tagName,publishedAt \
-    --jq '[.[] | select(.tagName | startswith("linux-aarch64-dev-"))] | sort_by(.publishedAt) | .[-1].tagName'
-)"
-test -n "$OV_RELEASE_TAG"
-gh release view "$OV_RELEASE_TAG" --repo "$OV_GITHUB_REPO" --json assets \
-  --jq '.assets[].name'
+git ls-remote --exit-code \
+  https://github.com/NVIDIA-Omniverse/omniverse-labs.git refs/heads/main
+curl -fsSL -o /dev/null "$OV_RELEASE_URL"
+python3 "$GUIDE_REPO/scripts/download_ov_release.py" \
+  --release-url "$OV_RELEASE_URL" \
+  --platform "$OV_PLATFORM" \
+  --output-dir "$OV_ARTIFACT_DIR"
 ```
+
+See the official
+[ov-blender-example project](https://github.com/NVIDIA-Omniverse/omniverse-labs/tree/main/projects/ov-blender-example)
+and [Release page](https://github.com/NVIDIA-Omniverse/omniverse-labs/releases)
+before changing the tag or asset names.
 
 ### Docker access fails
 

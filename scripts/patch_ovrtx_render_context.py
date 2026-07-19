@@ -106,7 +106,7 @@ def main() -> int:
 
     targets: list[Path] = []
     if args.repo:
-        targets.append(args.repo / "public/addon/ovrtx_blender_example/scene_generation.py")
+        targets.append(args.repo / "addon/ovrtx_blender_example/scene_generation.py")
     targets.append(args.extension_package / "scene_generation.py")
 
     failures = 0

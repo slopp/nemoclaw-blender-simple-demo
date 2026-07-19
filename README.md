@@ -133,15 +133,16 @@ fallback execution.
 - NVIDIA GB300 with enough coherent memory for Nemotron 3 Ultra.
 - RTX-capable GPU; validation uses RTX PRO 6000 Blackwell.
 - Blender 5.1.x for Linux ARM64.
-- The NVIDIA
-  [`ov-blender-example-internal`](https://github.com/NVIDIA-Omniverse/ov-blender-example-internal)
-  add-on, OVRTX runtime, and OVPhysX runtime.
+- The official NVIDIA Omniverse Labs
+  [`ov-blender-example`](https://github.com/NVIDIA-Omniverse/omniverse-labs/tree/main/projects/ov-blender-example)
+  add-on, OVRTX runtime, OVPhysX runtime, and upstream skills from its
+  [public releases](https://github.com/NVIDIA-Omniverse/omniverse-labs/releases).
 - vLLM serving
   `nvidia/NVIDIA-Nemotron-3-Ultra-550B-A55B-NVFP4` locally.
 - NemoClaw with the Hermes agent and OpenShell sandbox runtime.
 - Docker with NVIDIA Container Toolkit, FFmpeg, and NoMachine.
-- GitHub credentials for the OV repository and a Hugging Face read token for
-  the model.
+- A Hugging Face read token for the model. The OV project and release assets
+  are public and do not require GitHub authentication.
 
 See the complete [DGX Station ARM64 setup guide](docs/setup-dgx-station-arm64.md)
 for commands, validation checks, temporary patches, troubleshooting, and the
